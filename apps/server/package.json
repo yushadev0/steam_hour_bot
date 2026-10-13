@@ -1,0 +1,22 @@
+{
+  "name": "@shb/server",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "spike": "tsx src/spike.ts",
+    "smoke": "tsx src/smoke.ts",
+    "spike:build": "bun build --compile src/spike.ts --outfile dist/spike",
+    "smoke:build": "bun build --compile src/smoke.ts --outfile dist/smoke",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "steam-user": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/steam-user": "^5.1.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "yusha-steam-hour-bot",
+  "private": true,
+  "description": "yusha's Steam Hour Bot",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "spike": "npm run spike -w apps/server --",
+    "smoke": "npm run smoke -w apps/server",
+    "spike:build": "npm run spike:build -w apps/server",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "overrides": {
+    "adm-zip": "^0.6.1",
+    "steam-appticket": {
+      "protobufjs": "^7.6.6"
+    }
+  }
+}
