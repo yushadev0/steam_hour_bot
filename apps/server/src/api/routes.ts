@@ -1,43 +1,12 @@
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { APP_NAME, VERSION } from '../config.js';
 import type { Core } from '../core.js';
-import { forbidden, tooManyRequests } from '../errors.js';
+import { forbidden } from '../errors.js';
 import { logger } from '../logger.js';
 import { idleModes, personaModes } from '../store/account-store.js';
-import { SESSION_COOKIE, type AuthStore } from './auth-store.js';
+import type { TokenStore } from './token-store.js';
 
-const LOGIN_MAX_FAILURES = 5;
-const LOGIN_WINDOW_MS = 15 * 60_000;
-
-/** Panel girişinde kaba kuvvet denemelerine karşı IP başına basit sınırlama. */
-class LoginLimiter {
-  private failures = new Map<string, { count: number; resetAt: number }>();
-
-  check(ip: string) {
-    const entry = this.failures.get(ip);
-    if (entry && entry.resetAt > Date.now() && entry.count >= LOGIN_MAX_FAILURES) {
-      const minutes = Math.ceil((entry.resetAt - Date.now()) / 60_000);
-      throw tooManyRequests(`Çok fazla hatalı deneme. ${minutes} dk sonra tekrar dene.`);
-    }
-  }
-
-  fail(ip: string) {
-    const entry = this.failures.get(ip);
-    if (!entry || entry.resetAt <= Date.now()) {
-      this.failures.set(ip, { count: 1, resetAt: Date.now() + LOGIN_WINDOW_MS });
-    } else {
-      entry.count++;
-    }
-  }
-
-  reset(ip: string) {
-    this.failures.delete(ip);
-  }
-}
-
-const loginBody = z.object({ password: z.string().min(1) });
-const changePasswordBody = z.object({ current: z.string(), next: z.string() });
 const createTokenBody = z.object({ name: z.string().min(1).max(64) });
 const addAccountBody = z.object({ accountName: z.string().trim().min(1), password: z.string().min(1) });
 const reloginBody = z.object({ password: z.string().min(1) });
@@ -55,77 +24,37 @@ const idParams = z.object({ id: z.string().min(1) });
 const gamesQuery = z.object({ refresh: z.enum(['true', 'false']).optional() });
 const logsQuery = z.object({ scope: z.string().optional(), limit: z.coerce.number().int().min(1).max(1000).optional() });
 
-/** Panel şifresini değiştirmek ve API token yönetmek yalnızca panel oturumuyla yapılabilir. */
-function requireSession(request: FastifyRequest) {
-  if (request.authKind !== 'session') throw forbidden('Bu işlem için panel girişi gerekli');
+/** API token'ları yalnızca yerel panelden yönetilebilir (token'la yeni token üretilemez). */
+function requireLocal(request: FastifyRequest) {
+  if (request.authKind !== 'local') throw forbidden('Token yönetimi yalnızca yerel panelden yapılabilir');
 }
 
-export function registerRoutes(app: FastifyInstance, core: Core, auth: AuthStore) {
+export function registerRoutes(app: FastifyInstance, core: Core, tokens: TokenStore) {
   const { manager } = core;
-  const limiter = new LoginLimiter();
 
   app.get('/api/health', async () => ({ ok: true, name: APP_NAME, version: VERSION }));
 
-  // --- Panel girişi ---
-
-  app.post('/api/auth/login', async (request, reply: FastifyReply) => {
-    limiter.check(request.ip);
-    const { password } = loginBody.parse(request.body);
-    let session;
-    try {
-      session = auth.login(password);
-    } catch (err) {
-      limiter.fail(request.ip);
-      logger.log('warn', 'api', `Hatalı panel girişi denemesi (${request.ip})`);
-      throw err;
-    }
-    limiter.reset(request.ip);
-    reply.setCookie(SESSION_COOKIE, session.token, {
-      path: '/',
-      httpOnly: true,
-      sameSite: 'strict',
-      secure: request.protocol === 'https',
-      expires: session.expiresAt,
-    });
-    return { ok: true };
-  });
-
-  app.post('/api/auth/logout', async (request, reply) => {
-    const token = request.cookies[SESSION_COOKIE];
-    if (token) auth.logout(token);
-    reply.clearCookie(SESSION_COOKIE, { path: '/' });
-    return { ok: true };
-  });
-
   app.get('/api/auth/me', async (request) => ({ authKind: request.authKind }));
 
-  app.post('/api/auth/password', async (request) => {
-    requireSession(request);
-    const { current, next } = changePasswordBody.parse(request.body);
-    auth.changePassword(current, next);
-    logger.log('info', 'api', 'Panel şifresi değiştirildi; tüm oturumlar kapatıldı.');
-    return { ok: true };
-  });
-
-  // --- API token'ları (yassistant gibi dış istemciler için) ---
+  // --- API token'ları (yassistant modülü için) ---
 
   app.get('/api/tokens', async (request) => {
-    requireSession(request);
-    return auth.listApiTokens();
+    requireLocal(request);
+    return tokens.list();
   });
 
   app.post('/api/tokens', async (request, reply) => {
-    requireSession(request);
+    requireLocal(request);
     const { name } = createTokenBody.parse(request.body);
-    const created = auth.createApiToken(name);
+    const created = tokens.create(name);
     logger.log('info', 'api', `API token oluşturuldu: ${created.info.name}`);
     return reply.status(201).send(created);
   });
 
   app.delete('/api/tokens/:id', async (request) => {
-    requireSession(request);
+    requireLocal(request);
     const { id } = idParams.parse(request.params);
-    auth.revokeApiToken(id);
+    tokens.revoke(id);
     return { ok: true };
   });
 

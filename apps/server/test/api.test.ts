@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import type { AddressInfo } from 'node:net';
 import type { FastifyInstance } from 'fastify';
-import { AuthStore } from '../src/api/auth-store.js';
+import { WebSocket } from 'ws';
 import { buildServer } from '../src/api/server.js';
+import { TokenStore } from '../src/api/token-store.js';
 import type { ServerMessage } from '../src/api/ws.js';
 import { loadConfig } from '../src/config.js';
 import type { Core } from '../src/core.js';
@@ -14,12 +17,10 @@ import { AccountStore } from '../src/store/account-store.js';
 import { Vault } from '../src/store/vault.js';
 import { FakeClient, fakeClientFactory } from './helpers.js';
 
-const PASSWORD = 'correct-horse';
-
 let app: FastifyInstance;
 let core: Core;
 let clients: FakeClient[];
-let cookie: string;
+let dataDir: string;
 
 /**
  * Sahte Steam senaryosu: şifreli girişte mobil Guard ister, '12345' kodu doğruysa girişi
@@ -40,13 +41,21 @@ function scenario(client: FakeClient) {
   };
 }
 
-async function login(password = PASSWORD) {
-  return app.inject({ method: 'POST', url: '/api/auth/login', payload: { password } });
+type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+
+/** Yerel panelden istek (inject varsayılanı: 127.0.0.1, Host: localhost) */
+function api(method: Method, url: string, payload?: object) {
+  return app.inject({ method, url, payload });
 }
 
-function api(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', url: string, payload?: object, auth = cookie) {
-  const headers = auth.startsWith('shb_session=') ? { cookie: auth } : { authorization: `Bearer ${auth}` };
-  return app.inject({ method, url, payload, headers });
+/** Başka bir makineden istek; token verilirse Bearer ile */
+function remote(method: Method, url: string, token?: string) {
+  return app.inject({
+    method,
+    url,
+    remoteAddress: '192.168.1.50',
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+  });
 }
 
 async function addAccount() {
@@ -57,14 +66,12 @@ async function addAccount() {
 }
 
 beforeEach(async () => {
-  const dataDir = mkdtempSync(join(tmpdir(), 'shb-api-'));
+  dataDir = mkdtempSync(join(tmpdir(), 'shb-api-'));
   clients = [];
   const store = new AccountStore(dataDir, new Vault('k'));
   const manager = new AccountManager(store, dataDir, fakeClientFactory(clients, scenario));
   core = { config: loadConfig({ SHB_DATA_DIR: dataDir }), store, manager };
-  app = await buildServer(core, new AuthStore(dataDir, PASSWORD));
-  const res = await login();
-  cookie = `shb_session=${res.cookies.find((c) => c.name === 'shb_session')!.value}`;
+  app = await buildServer(core, new TokenStore(dataDir));
 });
 
 afterEach(async () => {
@@ -72,58 +79,67 @@ afterEach(async () => {
   await app.close();
 });
 
-describe('Kimlik doğrulama', () => {
-  it('health herkese açık, diğer uç noktalar giriş ister', async () => {
-    assert.equal((await app.inject({ url: '/api/health' })).statusCode, 200);
-    assert.equal((await app.inject({ url: '/api/accounts' })).statusCode, 401);
-    assert.equal((await api('GET', '/api/accounts', undefined, 'shb_session=bogus')).statusCode, 401);
+describe('Erişim', () => {
+  it('yerel panel şifresiz erişir', async () => {
+    assert.deepEqual((await api('GET', '/api/auth/me')).json(), { authKind: 'local' });
+    assert.equal((await api('GET', '/api/accounts')).statusCode, 200);
   });
 
-  it('oturum çereziyle erişim verir', async () => {
-    const res = await api('GET', '/api/auth/me');
-    assert.deepEqual(res.json(), { authKind: 'session' });
+  it('başka makineden token olmadan erişilemez, health açıktır', async () => {
+    assert.equal((await remote('GET', '/api/accounts')).statusCode, 401);
+    assert.equal((await remote('GET', '/api/health')).statusCode, 200);
   });
 
-  it('hatalı şifreyi reddeder ve 5 denemeden sonra kilitler', async () => {
-    for (let i = 0; i < 5; i++) assert.equal((await login('wrong')).statusCode, 401);
-    const locked = await login(PASSWORD);
-    assert.equal(locked.statusCode, 429);
+  it('yerel olmayan Host başlığını reddeder (DNS rebinding)', async () => {
+    const res = await app.inject({ url: '/api/accounts', headers: { host: 'evil.example:8090' } });
+    assert.equal(res.statusCode, 401);
   });
 
-  it('şifre değişince eski oturumlar kapanır', async () => {
-    const changed = await api('POST', '/api/auth/password', { current: PASSWORD, next: 'new-password-1' });
-    assert.equal(changed.statusCode, 200);
-    assert.equal((await api('GET', '/api/accounts')).statusCode, 401);
-    assert.equal((await login('new-password-1')).statusCode, 200);
+  it('başka bir sitenin tarayıcı üzerinden isteğini reddeder (Origin)', async () => {
+    const res = await app.inject({ url: '/api/accounts', headers: { host: '127.0.0.1:8090', origin: 'https://evil.example' } });
+    assert.equal(res.statusCode, 403);
+    const same = await app.inject({ url: '/api/accounts', headers: { host: '127.0.0.1:8090', origin: 'http://127.0.0.1:8090' } });
+    assert.equal(same.statusCode, 200);
   });
 
-  it('çıkış yapınca oturum geçersizleşir', async () => {
-    await api('POST', '/api/auth/logout');
-    assert.equal((await api('GET', '/api/accounts')).statusCode, 401);
-  });
+  it('eski (panel şifreli) auth.json dosyasındaki token korunur', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'shb-auth-'));
+    const token = 'shb_legacy-token';
+    const apiToken = {
+      id: 'abc',
+      name: 'eski',
+      hash: createHash('sha256').update(token).digest('hex'),
+      preview: 'shb_lega',
+      createdAt: new Date().toISOString(),
+      lastUsedAt: null,
+    };
+    writeFileSync(join(dir, 'auth.json'), JSON.stringify({ version: 1, passwordHash: 'x:y', sessions: [], apiTokens: [apiToken] }));
 
-  it('ilk açılışta şifre verilmezse rastgele üretir', () => {
-    const auth = new AuthStore(mkdtempSync(join(tmpdir(), 'shb-auth-')));
-    assert.ok(auth.generatedPassword && auth.generatedPassword.length >= 12);
+    const store = new TokenStore(dir);
+    assert.equal(store.verify(token), true);
+    const migrated = JSON.parse(readFileSync(join(dir, 'auth.json'), 'utf8'));
+    assert.equal(migrated.version, 2);
+    assert.equal(migrated.passwordHash, undefined, 'eski panel şifresi silinmeli');
   });
 });
 
 describe('API token', () => {
-  it('token ile hesaplara erişilir ama token yönetilemez; iptal edilince geçersiz olur', async () => {
+  it('token ile dışarıdan hesaplara erişilir ama token yönetilemez; iptal edilince geçersiz olur', async () => {
     const created = await api('POST', '/api/tokens', { name: 'yassistant' });
     assert.equal(created.statusCode, 201);
     const { token, info } = created.json();
     assert.ok(token.startsWith('shb_'));
 
-    assert.equal((await api('GET', '/api/accounts', undefined, token)).statusCode, 200);
-    assert.equal((await api('GET', '/api/tokens', undefined, token)).statusCode, 403);
+    assert.equal((await remote('GET', '/api/accounts', token)).statusCode, 200);
+    assert.equal((await remote('GET', '/api/tokens', token)).statusCode, 403);
+    assert.equal((await remote('GET', '/api/accounts', 'shb_bogus')).statusCode, 401);
 
     const list = (await api('GET', '/api/tokens')).json();
     assert.equal(list.length, 1);
     assert.equal(list[0].hash, undefined, 'hash dışarı sızmamalı');
 
     await api('DELETE', `/api/tokens/${info.id}`);
-    assert.equal((await api('GET', '/api/accounts', undefined, token)).statusCode, 401);
+    assert.equal((await remote('GET', '/api/accounts', token)).statusCode, 401);
   });
 });
 
@@ -193,17 +209,18 @@ describe('Hesaplar', () => {
 });
 
 describe('WebSocket', () => {
-  it('bağlanınca anlık durumu, sonra değişiklikleri gönderir', async () => {
-    await addAccount();
-    // Sunucu snapshot'ı bağlantı açılır açılmaz gönderir; dinleyici onInit'te bağlanmalı.
+  /** Gerçek bir bağlantı: yerel adres ve Host/Origin kontrolleri ancak böyle test edilebilir */
+  async function connect(headers: Record<string, string> = {}) {
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const { port } = app.server.address() as AddressInfo;
     const messages: ServerMessage[] = [];
     let notify = () => {};
-    const ws = await app.injectWS('/api/ws', { headers: { cookie } }, {
-      onInit: (socket) =>
-        socket.on('message', (raw) => {
-          messages.push(JSON.parse(raw.toString()));
-          notify();
-        }),
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/api/ws`, { headers });
+    // Reddedilen bağlantıyı kapatırken istemci hata olayı yayar; test bunu ayrıca kontrol ediyor
+    ws.on('error', () => {});
+    ws.on('message', (raw) => {
+      messages.push(JSON.parse(raw.toString()));
+      notify();
     });
     /** İlgili türdeki ilk okunmamış mesajı bekler */
     const next = (type: ServerMessage['type']) =>
@@ -215,6 +232,12 @@ describe('WebSocket', () => {
         notify = check;
         check();
       });
+    return { ws, next, port };
+  }
+
+  it('bağlanınca anlık durumu, sonra değişiklikleri gönderir', async () => {
+    await addAccount();
+    const { ws, next } = await connect();
 
     const snapshot = await next('snapshot');
     assert.equal(snapshot.type === 'snapshot' && snapshot.accounts.length, 1);
@@ -226,7 +249,13 @@ describe('WebSocket', () => {
     ws.terminate();
   });
 
-  it('kimliksiz bağlantıyı reddeder', async () => {
-    await assert.rejects(app.injectWS('/api/ws'));
+  it('başka bir sitenin WebSocket bağlantısını reddeder', async () => {
+    const { ws } = await connect({ origin: 'https://evil.example' });
+    const status = await new Promise<number>((resolve) => {
+      ws.on('unexpected-response', (_req, res) => resolve(res.statusCode ?? 0));
+      ws.on('open', () => resolve(101));
+    });
+    assert.equal(status, 403);
+    ws.terminate();
   });
 });

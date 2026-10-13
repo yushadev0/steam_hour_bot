@@ -33,8 +33,6 @@ export function useLiveUpdates(enabled: boolean): LiveState {
       socket.onclose = () => {
         if (disposed) return;
         setState('closed');
-        // Oturum düşmüş olabilir; /me sonucu giriş ekranına yönlendirir
-        void queryClient.invalidateQueries({ queryKey: keys.me });
         retryTimer = window.setTimeout(connect, delay);
         delay = Math.min(delay * 2, 15_000);
       };

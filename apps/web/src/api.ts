@@ -28,10 +28,6 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    // Oturum düştüyse giriş ekranına dön
-    if (res.status === 401 && path !== '/auth/login' && path !== '/auth/me') {
-      queryClient.setQueryData(keys.me, null);
-    }
     throw new ApiError(res.status, data.error ?? `İstek başarısız (${res.status})`);
   }
   return data as T;
@@ -46,18 +42,8 @@ export const keys = {
 };
 
 export const api = {
-  /** Giriş yapılmamışsa null döner */
-  me: async () => {
-    try {
-      return await request<{ authKind: 'session' | 'token' }>('GET', '/auth/me');
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401) return null;
-      throw err;
-    }
-  },
-  login: (password: string) => request<{ ok: true }>('POST', '/auth/login', { password }),
-  logout: () => request<{ ok: true }>('POST', '/auth/logout'),
-  changePassword: (current: string, next: string) => request<{ ok: true }>('POST', '/auth/password', { current, next }),
+  /** Panel yalnızca botun çalıştığı bilgisayardan açılabilir; değilse 401/403 döner */
+  me: () => request<{ authKind: 'local' | 'token' }>('GET', '/auth/me'),
 
   addAccount: (accountName: string, password: string) => request<Account>('POST', '/accounts', { accountName, password }),
   relogin: (id: string, password: string) => request<Account>('POST', `/accounts/${id}/login`, { password }),

@@ -2,62 +2,13 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { Check, Copy, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { api, keys, queryClient } from '../api';
-import { Dialog, ErrorText, Spinner, useToast } from './ui';
+import { Dialog, ErrorText, Spinner } from './ui';
 
 export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
     <Dialog open={open} onClose={onClose} title="Ayarlar" wide>
-      <PasswordSection />
-      <hr className="my-6 border-line" />
       <TokenSection open={open} />
     </Dialog>
-  );
-}
-
-function PasswordSection() {
-  const [current, setCurrent] = useState('');
-  const [next, setNext] = useState('');
-  const toast = useToast();
-  const change = useMutation({
-    mutationFn: () => api.changePassword(current, next),
-    onSuccess: () => {
-      toast('Panel şifresi değişti, tekrar giriş yap');
-      queryClient.setQueryData(keys.me, null);
-    },
-  });
-
-  return (
-    <section>
-      <h3 className="font-semibold text-bright">Panel şifresi</h3>
-      <p className="mt-1 text-sm text-muted">Değiştirince tüm cihazlardaki panel oturumları kapanır.</p>
-      <form
-        className="mt-3 grid gap-3 sm:grid-cols-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          change.mutate();
-        }}
-      >
-        <div>
-          <label className="label" htmlFor="pw-current">
-            Mevcut şifre
-          </label>
-          <input id="pw-current" className="input" type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
-        </div>
-        <div>
-          <label className="label" htmlFor="pw-next">
-            Yeni şifre (en az 8 karakter)
-          </label>
-          <input id="pw-next" className="input" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />
-        </div>
-        <div className="sm:col-span-2">
-          <ErrorText>{change.error?.message}</ErrorText>
-          <button className="btn mt-1" disabled={!current || next.length < 8 || change.isPending}>
-            {change.isPending && <Spinner />}
-            Şifreyi değiştir
-          </button>
-        </div>
-      </form>
-    </section>
   );
 }
 
@@ -93,7 +44,7 @@ function TokenSection({ open }: { open: boolean }) {
     <section>
       <h3 className="font-semibold text-bright">API token'ları</h3>
       <p className="mt-1 text-sm text-muted">
-        Başka uygulamaların (ör. yassistant) botu yönetmesi için. Token'la hesaplar yönetilebilir ama panel şifresi değiştirilemez.
+        yassistant gibi başka bir uygulamanın botu yönetmesi için. Panel bu bilgisayardan şifresiz açılır; token yalnızca dışarıdan gelen API istekleri için gerekir.
       </p>
 
       <form

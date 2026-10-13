@@ -1,11 +1,10 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { ArrowLeft, LogOut, Plus, Settings } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, Plus, Settings } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { api, keys, queryClient } from './api';
+import { api, ApiError, keys } from './api';
 import { AccountDetail } from './components/AccountDetail';
 import { AccountList } from './components/AccountList';
 import { AddAccountDialog } from './components/AddAccountDialog';
-import { LoginScreen } from './components/LoginScreen';
 import { Logo } from './components/Logo';
 import { SettingsDialog } from './components/SettingsDialog';
 import { Spinner } from './components/ui';
@@ -22,18 +21,24 @@ export function App() {
     );
   }
   if (me.error) {
+    const denied = me.error instanceof ApiError && (me.error.status === 401 || me.error.status === 403);
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-bar p-4 text-center">
-        <p>
-          Sunucuya ulaşılamadı. Bot çalışıyor mu?
-          <button className="btn ml-3" onClick={() => me.refetch()}>
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-bar p-4 text-center">
+        <Logo size="lg" />
+        <p className="max-w-md">
+          {denied
+            ? 'Panel yalnızca botun çalıştığı bilgisayardan açılabilir. Adres çubuğunda 127.0.0.1 ya da localhost kullan.'
+            : 'Sunucuya ulaşılamadı. Bot çalışıyor mu?'}
+        </p>
+        {!denied && (
+          <button className="btn" onClick={() => me.refetch()}>
             Tekrar dene
           </button>
-        </p>
+        )}
       </div>
     );
   }
-  return me.data ? <Panel /> : <LoginScreen />;
+  return <Panel />;
 }
 
 const SELECTED_KEY = 'shb:selected';
@@ -71,11 +76,6 @@ function Panel() {
     setMobileDetail(true);
   };
 
-  const logout = useMutation({
-    mutationFn: api.logout,
-    onSettled: () => queryClient.setQueryData(keys.me, null),
-  });
-
   return (
     <div className="flex h-dvh flex-col">
       <header className="flex h-12 shrink-0 items-center gap-3 bg-bar px-4">
@@ -84,9 +84,6 @@ function Panel() {
         <ConnectionBadge state={live} />
         <button className="btn-ghost" onClick={() => setSettings(true)} aria-label="Ayarlar" title="Ayarlar">
           <Settings size={18} />
-        </button>
-        <button className="btn-ghost" onClick={() => logout.mutate()} aria-label="Çıkış yap" title="Çıkış yap">
-          <LogOut size={18} />
         </button>
       </header>
 

@@ -2,29 +2,24 @@
 
 Base URL: `http://<host>:8090/api`. All bodies are JSON. Errors are returned as `{ "error": "message" }` with a matching HTTP status.
 
-## Authentication
+## Access
 
-Two ways to authenticate:
+The panel and API are meant to be used from the machine the bot runs on. The server listens on `127.0.0.1` only.
 
-| Method | How | Used by |
-|---|---|---|
-| Panel session | `POST /auth/login` sets an `httpOnly` cookie (`shb_session`, 30 days) | Web panel |
-| API token | `Authorization: Bearer shb_...` header (or `?token=` on `/ws`) | External clients (e.g. yassistant) |
+| Caller | How it is authorized |
+|---|---|
+| Local (panel) | No password. Request must come from loopback with a local `Host` header (`localhost`, `127.0.0.1`); an `Origin` header, if present, must match the host. This blocks other websites from driving the panel through your browser. |
+| External client (yassistant module) | `Authorization: Bearer shb_...` (or `?token=` on `/ws`). Tokens are created in the panel settings. |
 
-API tokens can do everything except change the panel password and manage tokens.
-
-On first start a random panel password is printed to the log once. Set `SHB_ADMIN_PASSWORD` to choose it yourself. After 5 failed logins an IP is locked out for 15 minutes.
+Token management is only allowed locally.
 
 | Method | Path | Body | Notes |
 |---|---|---|---|
-| GET | `/health` | | Public. `{ ok, name, version }` |
-| POST | `/auth/login` | `{ password }` | Sets session cookie |
-| POST | `/auth/logout` | | |
-| GET | `/auth/me` | | `{ authKind: "session" \| "token" }` |
-| POST | `/auth/password` | `{ current, next }` | Session only. Logs out all sessions |
-| GET | `/tokens` | | Session only |
-| POST | `/tokens` | `{ name }` | Session only. Returns `{ token, info }`. The token is shown only once |
-| DELETE | `/tokens/:id` | | Session only |
+| GET | `/health` | | Always public. `{ ok, name, version }` |
+| GET | `/auth/me` | | `{ authKind: "local" \| "token" }` |
+| GET | `/tokens` | | Local only |
+| POST | `/tokens` | `{ name }` | Local only. Returns `{ token, info }`. The token is shown only once |
+| DELETE | `/tokens/:id` | | Local only |
 
 ## Accounts
 

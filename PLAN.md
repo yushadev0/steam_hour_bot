@@ -43,7 +43,8 @@ steam_hour_bot/
 1. **Şifre saklanmaz.** Şifre yalnızca ilk girişte kullanılır, sonra refresh token saklanır
    (`.env`'deki anahtarla şifrelenmiş).
 2. **Steam Guard panelden.** Kod istenirse panelde kod kutusu açılır; mobil onay da desteklenir.
-3. **Panel girişi zorunlu** (admin şifresi). yassistant için ayrıca API token.
+3. **Panel yereldir ve şifresizdir.** Yalnızca 127.0.0.1'i dinler; Host/Origin kontrolüyle başka sitelerin
+   tarayıcı üzerinden erişimi engellenir. yassistant modülü için API token.
 4. **Başka yerden oyuna girilirse** bot geri çekilir, oyun kapanınca devam eder.
 5. **Kart modu:** resmi API yok; `/badges` sayfası okunur. Kartı kalan oyunlar sırayla kasılır,
    ~15 dk'da bir kontrol, bitince sıradakine geçilir.
@@ -56,8 +57,8 @@ steam_hour_bot/
 |---|---|---|
 | 0. Deneme | `steam-user` ile giriş + oyun gösterme; Bun `.exe` derlemesinin doğrulanması | ✅ |
 | 1. Çekirdek | Hesap yöneticisi, giriş/Guard akışı, idler, yeniden bağlanma, kalıcılık, CLI | ✅ |
-| 2. API | REST + WebSocket, panel girişi, API token ([docs/API.md](docs/API.md)) | ✅ |
-| 3. Web paneli | Giriş, hesap listesi/durum, hesap ekleme, oyun seçici, mod ayarları, canlı log; panel exe'ye gömülü | ✅ |
+| 2. API | REST + WebSocket, yerel erişim, API token ([docs/API.md](docs/API.md)) | ✅ |
+| 3. Web paneli | Hesap listesi/durum, hesap ekleme, oyun seçici, mod ayarları, canlı log; panel exe'ye gömülü | ✅ |
 | 4. Kart modu | Rozet sayfası okuma, sıralı kasma, otomatik geçiş | |
 | 5. Dağıtım | Dockerfile, compose, Windows `.exe`, README | |
 | 6. yassistant | İleri aşama | |

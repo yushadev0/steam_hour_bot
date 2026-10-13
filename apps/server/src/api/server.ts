@@ -1,14 +1,16 @@
-import cookie from '@fastify/cookie';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { z, ZodError } from 'zod';
 import type { Core } from '../core.js';
-import { AppError, unauthorized } from '../errors.js';
+import { AppError, forbidden, unauthorized } from '../errors.js';
 import { logger } from '../logger.js';
-import { SESSION_COOKIE, type AuthKind, type AuthStore } from './auth-store.js';
 import { registerRoutes } from './routes.js';
 import { loadWebAssets, registerStatic } from './static.js';
+import type { TokenStore } from './token-store.js';
 import { registerWebSocket } from './ws.js';
+
+/** 'local': botun çalıştığı bilgisayardan (panel). 'token': API token'lı dış istemci (yassistant). */
+export type AuthKind = 'local' | 'token';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -16,36 +18,65 @@ declare module 'fastify' {
   }
 }
 
-/** Kimlik doğrulama gerektirmeyen uç noktalar */
-const PUBLIC_ROUTES = new Set(['/api/health', '/api/auth/login']);
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-/** İstekten oturum çerezi ya da Bearer token'ı okur (WebSocket için ?token= de kabul edilir). */
-export function credentialOf(request: FastifyRequest): string | null {
+/** Bearer token (WebSocket için ?token= de kabul edilir). */
+function tokenOf(request: FastifyRequest): string | null {
   const header = request.headers.authorization;
   if (header?.startsWith('Bearer ')) return header.slice(7).trim();
-  const fromCookie = request.cookies[SESSION_COOKIE];
-  if (fromCookie) return fromCookie;
   const query = request.query as { token?: string } | undefined;
   if (request.url.startsWith('/api/ws') && query?.token) return query.token;
   return null;
 }
 
+const hostnameOf = (host: string) => host.replace(/:\d+$/, '').toLowerCase();
+
+/**
+ * Panel şifresizdir; yalnızca bu bilgisayardan gelen istekler kabul edilir. Ek olarak:
+ * - Host başlığı yerel olmalı: kötü niyetli bir sitenin alan adını 127.0.0.1'e çözdürerek
+ *   (DNS rebinding) panele erişmesini engeller.
+ * - Origin varsa Host ile aynı olmalı: başka bir sitenin tarayıcı üzerinden istek/WebSocket
+ *   açmasını engeller.
+ */
+function isTrustedLocal(request: FastifyRequest): boolean {
+  if (!LOOPBACK.has(request.socket.remoteAddress ?? '')) return false;
+  const host = request.headers.host ?? '';
+  if (!LOCAL_HOSTNAMES.has(hostnameOf(host))) return false;
+  const origin = request.headers.origin;
+  if (origin) {
+    try {
+      if (new URL(origin).host !== host) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Doğrulama hataları panelde Türkçe görünsün
 z.config(z.locales.tr());
 
-export async function buildServer(core: Core, auth: AuthStore, options: { serveWeb?: boolean } = {}): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false, trustProxy: process.env.SHB_TRUST_PROXY === 'true' });
-  await app.register(cookie);
+export async function buildServer(core: Core, tokens: TokenStore, options: { serveWeb?: boolean } = {}): Promise<FastifyInstance> {
+  const app = Fastify({ logger: false });
   await app.register(websocket);
 
   app.decorateRequest('authKind', null);
 
   app.addHook('onRequest', async (request) => {
     const path = request.url.split('?')[0]!;
-    if (!path.startsWith('/api/') || PUBLIC_ROUTES.has(path)) return;
-    const credential = credentialOf(request);
-    request.authKind = credential ? auth.verify(credential) : null;
-    if (!request.authKind) throw unauthorized();
+    if (!path.startsWith('/api/') || path === '/api/health') return;
+    const token = tokenOf(request);
+    if (token) {
+      if (!tokens.verify(token)) throw unauthorized('API token geçersiz');
+      request.authKind = 'token';
+      return;
+    }
+    if (isTrustedLocal(request)) {
+      request.authKind = 'local';
+      return;
+    }
+    throw request.headers.origin ? forbidden('Bu istek kabul edilmedi') : unauthorized('Panel yalnızca botun çalıştığı bilgisayardan kullanılabilir');
   });
 
   app.setErrorHandler((error, request, reply) => {
@@ -63,7 +94,7 @@ export async function buildServer(core: Core, auth: AuthStore, options: { serveW
 
   app.setNotFoundHandler((request, reply) => reply.status(404).send({ error: `Bulunamadı: ${request.method} ${request.url.split('?')[0]}` }));
 
-  registerRoutes(app, core, auth);
+  registerRoutes(app, core, tokens);
   registerWebSocket(app, core);
 
   if (options.serveWeb) {

@@ -27,8 +27,7 @@ Kullanım: steam-hour-bot [komut] [argümanlar]
   remove <kullanıcı>               Hesabı ve kayıtlı token'ı siler
   smoke                            Steam bağlantı testi (anonim giriş, hesap gerekmez)
 
-Ortam değişkenleri: SHB_DATA_DIR, SHB_HOST (varsayılan 127.0.0.1), SHB_PORT (8090),
-SHB_ADMIN_PASSWORD, SHB_SECRET
+Ortam değişkenleri: SHB_DATA_DIR, SHB_PORT (8090), SHB_SECRET, SHB_NO_BROWSER
 `;
 
 /** Hesap verisini değiştiren komutlar; sunucu açıkken çalıştırılamaz. */

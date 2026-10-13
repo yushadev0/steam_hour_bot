@@ -1,6 +1,6 @@
 /**
  * Arayüz geliştirme için demo sunucu: gerçek Steam yerine sahte istemcilerle çalışır.
- * Geçici bir data klasöründe örnek hesaplar oluşturur. Panel şifresi: demo
+ * Geçici bir data klasöründe örnek hesaplar oluşturur.
  *
  *   npm run demo   (ardından apps/web'de npm run dev, ya da derlenmiş panel için http://127.0.0.1:8090)
  */
@@ -9,7 +9,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import SteamUser from 'steam-user';
-import { AuthStore } from '../src/api/auth-store.js';
+import { TokenStore } from '../src/api/token-store.js';
 import { buildServer } from '../src/api/server.js';
 import { loadConfig } from '../src/config.js';
 import { AccountManager } from '../src/steam/account-manager.js';
@@ -83,7 +83,7 @@ for (const { name, games, persona } of seed) {
 
 const manager = new AccountManager(store, dataDir, () => new DemoClient() as unknown as SteamUser);
 const config = loadConfig({ ...process.env, SHB_DATA_DIR: dataDir });
-const app = await buildServer({ config, store, manager }, new AuthStore(dataDir, 'demo'), { serveWeb: true });
+const app = await buildServer({ config, store, manager }, new TokenStore(dataDir), { serveWeb: true });
 await app.listen({ host: config.host, port: config.port });
 manager.startAll();
-console.log(`Demo sunucu: http://${config.host}:${config.port}  (panel şifresi: demo, yeni hesapta Guard kodu: 12345)`);
+console.log(`Demo sunucu: http://127.0.0.1:${config.port}  (yeni hesap eklerken Guard kodu: 12345)`);

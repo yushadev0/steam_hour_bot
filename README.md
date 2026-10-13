@@ -23,7 +23,7 @@ npm run build:web  # build the web panel once
 npm start          # bot + panel on http://127.0.0.1:8090
 ```
 
-On first start a random panel password is printed once in the log (set `SHB_ADMIN_PASSWORD` to choose your own). See [docs/API.md](docs/API.md) for the REST/WebSocket API.
+The panel is a local UI: it only listens on `127.0.0.1` and needs no password. On Windows the standalone exe opens it in your browser automatically. On a headless Linux box, open it from that machine (or through an SSH tunnel: `ssh -L 8090:127.0.0.1:8090 server`). See [docs/API.md](docs/API.md) for the REST/WebSocket API.
 
 ### CLI
 
@@ -44,11 +44,9 @@ The standalone binary takes the same commands (`steam-hour-bot add <username>`).
 | Variable | Default | |
 |---|---|---|
 | `SHB_DATA_DIR` | `./data` | Accounts, encrypted tokens, panel auth |
-| `SHB_HOST` | `127.0.0.1` | Use `0.0.0.0` to expose (e.g. Docker) |
 | `SHB_PORT` | `8090` | |
-| `SHB_ADMIN_PASSWORD` | random | Panel password |
 | `SHB_SECRET` | `data/secret.key` | Token encryption key |
-| `SHB_TRUST_PROXY` | `false` | Set `true` behind a reverse proxy |
+| `SHB_NO_BROWSER` | | Set to stop the Windows exe from opening the panel |
 
 Refresh tokens are encrypted with AES-256-GCM. Passwords are never stored.
 

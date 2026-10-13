@@ -11,11 +11,9 @@ export interface Config {
   dataDir: string;
   /** Token şifreleme anahtarı. Verilmezse dataDir/secret.key otomatik üretilir. */
   secret: string | undefined;
-  /** Panel/API adresi. Varsayılan yalnızca bu bilgisayar; Docker'da 0.0.0.0 */
+  /** Dinlenen adres. Varsayılan yalnızca bu bilgisayar (panel şifresizdir). */
   host: string;
   port: number;
-  /** Verilirse panel şifresi bu olur; verilmezse ilk açılışta rastgele üretilir. */
-  adminPassword: string | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -25,6 +23,5 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     secret: env.SHB_SECRET || undefined,
     host: env.SHB_HOST || '127.0.0.1',
     port: Number(env.SHB_PORT) || 8090,
-    adminPassword: env.SHB_ADMIN_PASSWORD || undefined,
   };
 }

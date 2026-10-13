@@ -1,5 +1,6 @@
-import { AuthStore } from './api/auth-store.js';
+import { spawn } from 'node:child_process';
 import { buildServer } from './api/server.js';
+import { TokenStore } from './api/token-store.js';
 import { APP_NAME, VERSION } from './config.js';
 import type { Core } from './core.js';
 import { acquireServerLock } from './lock.js';
@@ -7,20 +8,27 @@ import { logger } from './logger.js';
 
 const log = logger.scoped('core');
 
-/** Botu ve panel/API sunucusunu başlatır; SIGINT/SIGTERM ile düzgün kapanır. */
+/** Windows'ta exe çalıştırılınca paneli varsayılan tarayıcıda açar (SHB_NO_BROWSER=1 ile kapatılır). */
+function openBrowser(url: string) {
+  const compiled = !!process.versions.bun;
+  if (process.platform !== 'win32' || !compiled || process.env.SHB_NO_BROWSER) return;
+  spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+}
+
+/** Botu ve yerel paneli başlatır; SIGINT/SIGTERM ile düzgün kapanır. */
 export async function serve(core: Core) {
   const { config, manager } = core;
   const releaseLock = acquireServerLock(config.dataDir);
 
-  const auth = new AuthStore(config.dataDir, config.adminPassword);
-  const app = await buildServer(core, auth, { serveWeb: true });
+  const app = await buildServer(core, new TokenStore(config.dataDir), { serveWeb: true });
   await app.listen({ host: config.host, port: config.port });
 
-  const shownHost = config.host === '0.0.0.0' ? 'localhost' : config.host;
-  log.info(`${APP_NAME} v${VERSION} çalışıyor → http://${shownHost}:${config.port}`);
-  if (auth.generatedPassword) {
-    log.warn(`Panel şifresi oluşturuldu: ${auth.generatedPassword}  (girişten sonra panelden değiştirebilirsin; bir daha gösterilmeyecek)`);
+  const url = `http://127.0.0.1:${config.port}`;
+  log.info(`${APP_NAME} v${VERSION} çalışıyor → panel: ${url}`);
+  if (config.host !== '127.0.0.1' && config.host !== 'localhost') {
+    log.warn(`Sunucu ${config.host} adresini dinliyor. Panel yine yalnızca bu bilgisayardan açılır; dışarıdan yalnızca API token ile erişilebilir.`);
   }
+  openBrowser(url);
 
   manager.startAll();
 
