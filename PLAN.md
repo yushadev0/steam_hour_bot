@@ -61,4 +61,4 @@ steam_hour_bot/
 | 3. Web paneli | Hesap listesi/durum, hesap ekleme, oyun seçici, mod ayarları, canlı log; panel exe'ye gömülü | ✅ |
 | 4. Kart modu | Rozet sayfası okuma, sıralı kasma, otomatik geçiş | ✅ |
 | 5. Dağıtım | Dockerfile, compose (host ağı), Windows `.exe`, systemd servisi, `npm run deploy` | ✅ |
-| 6. yassistant | İleri aşama | |
+| 6. yassistant | yassistant agent'ı `/steam/*` isteklerini sunucu içinden bota iletir; uygulamada Steam sekmesi | ✅ |

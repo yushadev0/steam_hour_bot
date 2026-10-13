@@ -9,9 +9,9 @@ The panel and API are meant to be used from the machine the bot runs on. The ser
 | Caller | How it is authorized |
 |---|---|
 | Local (panel) | No password. Request must come from loopback with a local `Host` header (`localhost`, `127.0.0.1`); an `Origin` header, if present, must match the host. This blocks other websites from driving the panel through your browser. |
-| External client (yassistant module) | `Authorization: Bearer shb_...` (or `?token=` on `/ws`). Tokens are created in the panel settings. |
+| External client | `Authorization: Bearer shb_...` (or `?token=` on `/ws`). Tokens are created in the panel settings. |
 
-Token management is only allowed locally.
+Token management is only allowed locally. The yassistant module does not need a token: its agent runs on the same server and calls the bot over `127.0.0.1`.
 
 | Method | Path | Body | Notes |
 |---|---|---|---|
