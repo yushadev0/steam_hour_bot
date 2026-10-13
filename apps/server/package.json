@@ -10,7 +10,8 @@
     "build:exe": "bun scripts/build-exe.ts",
     "test": "tsx --test --test-timeout=15000 test/*.test.ts",
     "typecheck": "tsc -p .",
-    "dev": "tsx watch src/cli.ts serve"
+    "dev": "tsx watch src/cli.ts serve",
+    "demo": "tsx scripts/demo.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.3",

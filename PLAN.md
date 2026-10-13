@@ -20,7 +20,7 @@ Windows ve Linux'ta çalışır. Steam girişi zorunludur.
 | Backend | Node.js + TypeScript + Fastify |
 | Canlı durum | WebSocket |
 | Veri | JSON dosyaları (`data/`), native modül yok |
-| Frontend | React + Vite + TypeScript, TanStack Query, Tailwind + shadcn/ui |
+| Frontend | React + Vite + TypeScript, TanStack Query, Tailwind v4 (shadcn yerine elle yazılmış hafif bileşenler) |
 | Paketleme | Docker multi-stage; `.exe` için `bun build --compile` (panel gömülü) |
 
 ## Proje yapısı
@@ -57,7 +57,7 @@ steam_hour_bot/
 | 0. Deneme | `steam-user` ile giriş + oyun gösterme; Bun `.exe` derlemesinin doğrulanması | ✅ |
 | 1. Çekirdek | Hesap yöneticisi, giriş/Guard akışı, idler, yeniden bağlanma, kalıcılık, CLI | ✅ |
 | 2. API | REST + WebSocket, panel girişi, API token ([docs/API.md](docs/API.md)) | ✅ |
-| 3. Web paneli | Giriş, hesap listesi/durum, hesap ekleme, oyun seçici, mod ayarları, canlı log | |
+| 3. Web paneli | Giriş, hesap listesi/durum, hesap ekleme, oyun seçici, mod ayarları, canlı log; panel exe'ye gömülü | ✅ |
 | 4. Kart modu | Rozet sayfası okuma, sıralı kasma, otomatik geçiş | |
 | 5. Dağıtım | Dockerfile, compose, Windows `.exe`, README | |
 | 6. yassistant | İleri aşama | |

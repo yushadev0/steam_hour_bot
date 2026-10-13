@@ -18,6 +18,7 @@ const accountSchema = z.object({
   accountName: z.string(),
   steamId: z.string().nullable().default(null),
   personaName: z.string().nullable().default(null),
+  avatarUrl: z.string().nullable().default(null),
   games: z.array(z.number().int().positive()).default([]),
   persona: z.enum(personaModes).default('online'),
   mode: z.enum(idleModes).default('games'),
@@ -97,7 +98,7 @@ export class AccountStore {
     return account;
   }
 
-  update(id: string, patch: AccountPatch & Partial<Pick<AccountRecord, 'steamId' | 'personaName'>>): AccountRecord {
+  update(id: string, patch: AccountPatch & Partial<Pick<AccountRecord, 'steamId' | 'personaName' | 'avatarUrl'>>): AccountRecord {
     const account = this.require(id);
     const next = { ...account, ...patch };
     if (patch.games) next.games = normalizeGames(patch.games);

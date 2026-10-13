@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import SteamUser from 'steam-user';
 import { badRequest, conflict } from '../errors.js';
 import { logger, type ScopedLogger } from '../logger.js';
+import type { AppNameCache } from '../store/app-names.js';
 import type { AccountRecord, AccountStore } from '../store/account-store.js';
 
 const { EResult, EPersonaState } = SteamUser;
@@ -38,6 +39,8 @@ export interface SessionSnapshot {
   retryAt: string | null;
   /** blocked durumunda başka yerde açık olan oyun */
   blockedByApp: number | null;
+  /** running durumundaysa ne zamandan beri kesintisiz kasılıyor */
+  runningSince: string | null;
 }
 
 export interface OwnedGame {
@@ -49,6 +52,14 @@ export interface OwnedGame {
 }
 
 export type ClientFactory = (options: ConstructorParameters<typeof SteamUser>[0]) => SteamUser;
+
+export interface SessionDeps {
+  /** steam-user'ın kendi önbellek klasörü */
+  steamDataDir: string;
+  appNames: AppNameCache;
+  /** Testlerde sahte istemci vermek için */
+  createClient?: ClientFactory;
+}
 
 type SessionEvents = {
   change: [SessionSnapshot];
@@ -91,6 +102,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
   private lastError: string | null = null;
   private retryAt: Date | null = null;
   private blockedByApp: number | null = null;
+  private runningSince: Date | null = null;
 
   private loggedOn = false;
   private blocked = false;
@@ -103,9 +115,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
   constructor(
     readonly accountId: string,
     private readonly store: AccountStore,
-    private readonly steamDataDir: string,
-    /** Testlerde sahte istemci vermek için */
-    private readonly createClient: ClientFactory = (options) => new SteamUser(options),
+    private readonly deps: SessionDeps,
   ) {
     super();
     this.log = logger.scoped(accountId);
@@ -122,10 +132,13 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       lastError: this.lastError,
       retryAt: this.retryAt?.toISOString() ?? null,
       blockedByApp: this.blockedByApp,
+      runningSince: this.runningSince?.toISOString() ?? null,
     };
   }
 
   private setState(state: SessionState, patch: Partial<Pick<SessionSnapshot, 'lastError' | 'guard'>> = {}) {
+    if (state !== 'running') this.runningSince = null;
+    else if (this.state !== 'running') this.runningSince = new Date();
     this.state = state;
     if (state !== 'awaiting_guard') {
       this.guard = null;
@@ -195,6 +208,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       }))
       .sort((a, b) => b.playtimeMinutes - a.playtimeMinutes);
     this.ownedGamesCache = { at: Date.now(), games };
+    this.deps.appNames.merge(games);
     return games;
   }
 
@@ -212,11 +226,8 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     this.setState('connecting');
     this.log.info('refreshToken' in details ? 'Token ile giriş yapılıyor...' : 'Şifre ile giriş yapılıyor...');
 
-    const client = this.createClient({
-      autoRelogin: true,
-      renewRefreshTokens: true,
-      dataDirectory: this.steamDataDir,
-    });
+    const options = { autoRelogin: true, renewRefreshTokens: true, dataDirectory: this.deps.steamDataDir };
+    const client = this.deps.createClient ? this.deps.createClient(options) : new SteamUser(options);
     this.client = client;
     this.bindEvents(client);
     client.logOn(details);
@@ -233,9 +244,14 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       this.finishPasswordLogin(null);
 
       this.applyPersona();
+      this.fetchAvatar(client);
       // Steam, hesabın başka yerde oyunda olup olmadığını girişten hemen sonra bildirir.
       // O bilgi gelmeden oyun gösterirsek kullanıcının gerçek oturumunu etkileyebiliriz.
       this.applyTimer = setTimeout(() => this.applyGames(), PLAYING_STATE_GRACE_MS);
+      // Oyun adlarını önceden öğren (panel ve loglar için)
+      this.getOwnedGames()
+        .then(() => this.emit('change', this.snapshot()))
+        .catch((err: Error) => this.log.debug(`Kütüphane alınamadı: ${err.message}`));
     });
 
     client.on('accountInfo', (name) => {
@@ -264,7 +280,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       if (blocked === this.blocked) return;
       this.blocked = blocked;
       if (blocked) {
-        this.log.info(`Hesapta başka bir yerde oyun açık (AppID ${playingApp}), bekleniyor.`);
+        this.log.info(`Hesapla başka bir yerde oynanıyor (${this.deps.appNames.label(playingApp)}), bekleniyor.`);
         this.setState('blocked');
         this.blockedByApp = playingApp || null;
         this.emit('change', this.snapshot());
@@ -290,7 +306,9 @@ export class AccountSession extends EventEmitter<SessionEvents> {
 
   private handleError(err: Error & { eresult?: number }) {
     const eresult = err.eresult ?? EResult.Fail;
-    const reason = `${err.message} (${EResult[eresult] ?? eresult})`;
+    // steam-user çoğu hatada mesaj olarak EResult adını verir; tekrar etmesin
+    const code = EResult[eresult] ?? String(eresult);
+    const reason = err.message === code ? code : `${err.message} (${code})`;
     this.teardown();
 
     if (AUTH_ERRORS.has(eresult)) {
@@ -327,6 +345,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
 
   private scheduleRetry(delay: number, reason: string) {
     this.retryAt = new Date(Date.now() + delay);
+    this.runningSince = null;
     this.lastError = reason;
     this.state = 'waiting_retry';
     this.emit('change', this.snapshot());
@@ -341,6 +360,21 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     if (!this.passwordLogin) return;
     this.passwordLogin = false;
     this.emit('loginResult', err);
+  }
+
+  private fetchAvatar(client: SteamUser) {
+    if (!client.steamID) return;
+    const steamId = client.steamID.getSteamID64();
+    client
+      .getPersonas([client.steamID])
+      .then(({ personas }) => {
+        const avatarUrl: string | undefined = personas[steamId]?.avatar_url_medium;
+        if (avatarUrl && avatarUrl !== this.account.avatarUrl) {
+          this.store.update(this.accountId, { avatarUrl });
+          this.emit('change', this.snapshot());
+        }
+      })
+      .catch((err: Error) => this.log.debug(`Avatar alınamadı: ${err.message}`));
   }
 
   private applyPersona() {
@@ -358,7 +392,11 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     const { games, enabled } = this.account;
     const toPlay = enabled ? games : [];
     this.client.gamesPlayed(toPlay);
-    this.log.info(toPlay.length ? `Oynuyor gösteriliyor: ${toPlay.join(', ')}` : 'Oyun listesi boş, hiçbir oyun gösterilmiyor.');
+    this.log.info(
+      toPlay.length
+        ? `Oynuyor gösteriliyor: ${toPlay.map((id) => this.deps.appNames.label(id)).join(', ')}`
+        : 'Oyun listesi boş, hiçbir oyun gösterilmiyor.',
+    );
   }
 
   /** İstemciyi ve zamanlayıcıları temizler (durum değiştirmez). */

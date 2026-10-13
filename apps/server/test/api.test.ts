@@ -141,6 +141,11 @@ describe('Hesaplar', () => {
     assert.equal(ok.json().session.state, 'running');
     assert.equal(ok.json().hasToken, true);
     assert.equal(ok.json().steamId, '76561190000000000');
+    assert.ok(ok.json().session.runningSince, 'runningSince dolu olmalı');
+
+    await new Promise((r) => setImmediate(r));
+    const account = (await api('GET', '/api/accounts/user')).json();
+    assert.equal(account.avatarUrl, 'https://avatars.example/a_medium.jpg');
   });
 
   it('aynı hesabı iki kez ekleyince 409 döner', async () => {
@@ -156,6 +161,8 @@ describe('Hesaplar', () => {
     assert.deepEqual(patched.json().games, [730, 440]);
     assert.equal(patched.json().persona, 'invisible');
     assert.deepEqual(clients.at(-1)!.played.at(-1), [730, 440]);
+    // Girişte kütüphane okunur, oyun adları hesap çevrimdışıyken de bilinir
+    assert.deepEqual(patched.json().gameNames, { 730: 'Counter-Strike 2', 440: 'Team Fortress 2' });
 
     const tooMany = Array.from({ length: 33 }, (_, i) => i + 1);
     assert.equal((await api('PATCH', '/api/accounts/user', { games: tooMany })).statusCode, 400);

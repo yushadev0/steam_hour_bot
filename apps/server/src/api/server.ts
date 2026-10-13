@@ -7,6 +7,7 @@ import { AppError, unauthorized } from '../errors.js';
 import { logger } from '../logger.js';
 import { SESSION_COOKIE, type AuthKind, type AuthStore } from './auth-store.js';
 import { registerRoutes } from './routes.js';
+import { loadWebAssets, registerStatic } from './static.js';
 import { registerWebSocket } from './ws.js';
 
 declare module 'fastify' {
@@ -32,7 +33,7 @@ export function credentialOf(request: FastifyRequest): string | null {
 // Doğrulama hataları panelde Türkçe görünsün
 z.config(z.locales.tr());
 
-export async function buildServer(core: Core, auth: AuthStore): Promise<FastifyInstance> {
+export async function buildServer(core: Core, auth: AuthStore, options: { serveWeb?: boolean } = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: false, trustProxy: process.env.SHB_TRUST_PROXY === 'true' });
   await app.register(cookie);
   await app.register(websocket);
@@ -64,5 +65,11 @@ export async function buildServer(core: Core, auth: AuthStore): Promise<FastifyI
 
   registerRoutes(app, core, auth);
   registerWebSocket(app, core);
+
+  if (options.serveWeb) {
+    const web = loadWebAssets();
+    logger.log('info', 'core', web ? `Panel dosyaları: ${web.source}` : 'Panel dosyaları bulunamadı; yalnızca API çalışıyor.');
+    registerStatic(app, web?.assets ?? null);
+  }
   return app;
 }

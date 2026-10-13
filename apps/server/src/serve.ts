@@ -13,7 +13,7 @@ export async function serve(core: Core) {
   const releaseLock = acquireServerLock(config.dataDir);
 
   const auth = new AuthStore(config.dataDir, config.adminPassword);
-  const app = await buildServer(core, auth);
+  const app = await buildServer(core, auth, { serveWeb: true });
   await app.listen({ host: config.host, port: config.port });
 
   const shownHost = config.host === '0.0.0.0' ? 'localhost' : config.host;

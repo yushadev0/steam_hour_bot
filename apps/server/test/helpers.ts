@@ -33,6 +33,9 @@ export class FakeClient extends EventEmitter {
       ],
     };
   }
+  async getPersonas() {
+    return { personas: { '76561190000000000': { avatar_url_medium: 'https://avatars.example/a_medium.jpg' } } };
+  }
   logOff() {}
   fail(eresult: number) {
     this.emit('error', Object.assign(new Error(SteamUser.EResult[eresult]), { eresult }));

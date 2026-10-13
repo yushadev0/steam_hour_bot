@@ -2,7 +2,7 @@
 
 Headless Steam hour booster for Windows and Linux. Signs in to your Steam account and shows the games you pick (by AppID) as "in-game" so playtime accumulates — no game install required.
 
-> **Status:** early development — core engine, CLI and REST/WebSocket API are ready (Phase 2). Web panel is next. See [PLAN.md](PLAN.md).
+> **Status:** web panel, API and core engine are ready (Phase 3). Card farming and Docker are next. See [PLAN.md](PLAN.md).
 
 ## Planned features
 
@@ -19,7 +19,8 @@ Requires Node.js 22+ (or use the standalone binary).
 
 ```bash
 npm install
-npm start          # bot + API on http://127.0.0.1:8090
+npm run build:web  # build the web panel once
+npm start          # bot + panel on http://127.0.0.1:8090
 ```
 
 On first start a random panel password is printed once in the log (set `SHB_ADMIN_PASSWORD` to choose your own). See [docs/API.md](docs/API.md) for the REST/WebSocket API.
@@ -58,13 +59,15 @@ The bot backs off automatically when you start a game on the same account elsewh
 Requires [Bun](https://bun.sh).
 
 ```bash
-npm run build:exe                                        # current platform
+npm run build:exe                                        # current platform (panel embedded)
 cd apps/server && bun scripts/build-exe.ts bun-linux-x64 # cross-compile
 ```
 
 ## Development
 
 ```bash
+npm run demo       # server with fake Steam accounts (panel password: demo)
+npm run dev:web    # Vite dev server with hot reload, proxies /api to :8090
 npm test
 npm run typecheck
 ```

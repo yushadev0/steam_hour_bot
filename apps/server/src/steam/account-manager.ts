@@ -2,11 +2,14 @@ import { EventEmitter } from 'node:events';
 import { notFound } from '../errors.js';
 import { logger } from '../logger.js';
 import { accountIdOf, type AccountPatch, type AccountRecord, type AccountStore } from '../store/account-store.js';
+import { AppNameCache } from '../store/app-names.js';
 import { AccountSession, steamDataDirOf, type ClientFactory, type OwnedGame, type SessionSnapshot } from './account-session.js';
 
 /** Hesap kaydı + canlı oturum durumu (token hariç). */
 export type AccountStatus = Omit<AccountRecord, 'refreshToken'> & {
   hasToken: boolean;
+  /** Seçili oyunların bilinen adları (AppID → ad) */
+  gameNames: Record<string, string>;
   session: SessionSnapshot;
 };
 
@@ -28,6 +31,7 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
   private running = false;
   private pendingLogins = new Map<string, Promise<void>>();
   private readonly steamDataDir: string;
+  private readonly appNames: AppNameCache;
 
   constructor(
     private readonly store: AccountStore,
@@ -36,11 +40,16 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
   ) {
     super();
     this.steamDataDir = steamDataDirOf(dataDir);
+    this.appNames = new AppNameCache(dataDir);
     for (const account of store.list()) this.createSession(account.id);
   }
 
   private createSession(id: string): AccountSession {
-    const session = new AccountSession(id, this.store, this.steamDataDir, this.clientFactory);
+    const session = new AccountSession(id, this.store, {
+      steamDataDir: this.steamDataDir,
+      appNames: this.appNames,
+      createClient: this.clientFactory,
+    });
     session.on('change', () => this.emitAccount(id));
     this.sessions.set(id, session);
     return session;
@@ -62,7 +71,12 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
     const session = this.sessions.get(accountIdOf(id));
     if (!account || !session) return undefined;
     const { refreshToken, ...rest } = account;
-    return { ...rest, hasToken: refreshToken !== null, session: session.snapshot() };
+    return {
+      ...rest,
+      hasToken: refreshToken !== null,
+      gameNames: this.appNames.pick(account.games),
+      session: session.snapshot(),
+    };
   }
 
   require(id: string): AccountStatus {
