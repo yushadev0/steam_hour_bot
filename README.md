@@ -2,7 +2,7 @@
 
 Headless Steam hour booster for Windows and Linux. Signs in to your Steam account and shows the games you pick (by AppID) as "in-game" so playtime accumulates — no game install required.
 
-> **Status:** early development (Phase 0 — proof of concept). See [PLAN.md](PLAN.md) for the roadmap.
+> **Status:** early development (Phase 0 done — proof of concept). See [PLAN.md](PLAN.md) for the roadmap.
 
 ## Planned features
 

@@ -54,7 +54,7 @@ steam_hour_bot/
 
 | Faz | İçerik | Durum |
 |---|---|---|
-| 0. Deneme | `steam-user` ile giriş + oyun gösterme; Bun `.exe` derlemesinin doğrulanması | ✅ exe + anonim giriş doğrulandı; ⏳ gerçek hesapla test |
+| 0. Deneme | `steam-user` ile giriş + oyun gösterme; Bun `.exe` derlemesinin doğrulanması | ✅ |
 | 1. Çekirdek | Hesap yöneticisi, giriş/Guard akışı, idler, yeniden bağlanma, kalıcılık | |
 | 2. API | REST + WebSocket, panel girişi, API token | |
 | 3. Web paneli | Giriş, hesap listesi/durum, hesap ekleme, oyun seçici, mod ayarları, canlı log | |
