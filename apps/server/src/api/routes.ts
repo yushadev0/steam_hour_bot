@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { APP_NAME, VERSION } from '../config.js';
 import type { Core } from '../core.js';
 import { forbidden } from '../errors.js';
+import { t } from '../i18n.js';
 import { logger } from '../logger.js';
 import { idleModes, personaModes } from '../store/account-store.js';
 import type { TokenStore } from './token-store.js';
@@ -26,7 +27,7 @@ const logsQuery = z.object({ scope: z.string().optional(), limit: z.coerce.numbe
 
 /** API token'ları yalnızca yerel panelden yönetilebilir (token'la yeni token üretilemez). */
 function requireLocal(request: FastifyRequest) {
-  if (request.authKind !== 'local') throw forbidden('Token yönetimi yalnızca yerel panelden yapılabilir');
+  if (request.authKind !== 'local') throw forbidden(t('Token yönetimi yalnızca yerel panelden yapılabilir', 'Tokens can only be managed from the local panel'));
 }
 
 export function registerRoutes(app: FastifyInstance, core: Core, tokens: TokenStore) {
@@ -47,7 +48,7 @@ export function registerRoutes(app: FastifyInstance, core: Core, tokens: TokenSt
     requireLocal(request);
     const { name } = createTokenBody.parse(request.body);
     const created = tokens.create(name);
-    logger.log('info', 'api', `API token oluşturuldu: ${created.info.name}`);
+    logger.log('info', 'api', t(`API token oluşturuldu: ${created.info.name}`, `API token created: ${created.info.name}`));
     return reply.status(201).send(created);
   });
 

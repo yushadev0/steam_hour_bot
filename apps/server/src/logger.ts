@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { consoleLang, textOf, type Text } from './i18n.js';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -7,7 +8,9 @@ export interface LogEntry {
   level: LogLevel;
   /** Kaynak: 'core' ya da hesap id'si */
   scope: string;
+  /** Türkçe metin */
   message: string;
+  messageEn: string;
 }
 
 const BUFFER_SIZE = 1000;
@@ -21,13 +24,14 @@ class Logger extends EventEmitter<{ entry: [LogEntry] }> {
   private buffer: LogEntry[] = [];
   minLevel: LogLevel = (process.env.SHB_LOG_LEVEL as LogLevel) || 'info';
 
-  log(level: LogLevel, scope: string, message: string) {
-    const entry: LogEntry = { time: new Date().toISOString(), level, scope, message };
+  log(level: LogLevel, scope: string, message: string | Text) {
+    const text = textOf(message);
+    const entry: LogEntry = { time: new Date().toISOString(), level, scope, message: text.tr, messageEn: text.en };
     this.buffer.push(entry);
     if (this.buffer.length > BUFFER_SIZE) this.buffer.shift();
 
     if (LEVEL_ORDER[level] >= LEVEL_ORDER[this.minLevel]) {
-      const line = `[${new Date(entry.time).toLocaleTimeString('tr-TR', { hour12: false })}] ${level.toUpperCase().padEnd(5)} [${scope}] ${message}`;
+      const line = `[${new Date(entry.time).toLocaleTimeString('tr-TR', { hour12: false })}] ${level.toUpperCase().padEnd(5)} [${scope}] ${text[consoleLang]}`;
       (level === 'error' ? console.error : console.log)(line);
     }
     this.emit('entry', entry);
@@ -41,10 +45,10 @@ class Logger extends EventEmitter<{ entry: [LogEntry] }> {
 
   scoped(scope: string) {
     return {
-      debug: (msg: string) => this.log('debug', scope, msg),
-      info: (msg: string) => this.log('info', scope, msg),
-      warn: (msg: string) => this.log('warn', scope, msg),
-      error: (msg: string) => this.log('error', scope, msg),
+      debug: (msg: string | Text) => this.log('debug', scope, msg),
+      info: (msg: string | Text) => this.log('info', scope, msg),
+      warn: (msg: string | Text) => this.log('warn', scope, msg),
+      error: (msg: string | Text) => this.log('error', scope, msg),
     };
   }
 }

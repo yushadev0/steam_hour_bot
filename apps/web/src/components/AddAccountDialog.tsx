@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { api, keys, upsertAccount } from '../api';
+import { useI18n } from '../i18n';
 import type { Account } from '../types';
 import { GuardForm } from './GuardForm';
 import { Dialog, ErrorText, Spinner, useToast } from './ui';
@@ -10,8 +11,10 @@ export function AddAccountDialog({ open, onClose, onAdded }: { open: boolean; on
   const [accountName, setAccountName] = useState('');
   const [password, setPassword] = useState('');
   const [pendingId, setPendingId] = useState<string | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
+  // Guard adımından sonra giriş başarısız olduysa (hesap sunucuda silindi)
+  const [failure, setFailure] = useState(false);
   const toast = useToast();
+  const { t } = useI18n();
 
   // Guard adımında hesabın canlı durumu (mobil onay WebSocket ile gelir)
   const { data: accounts } = useQuery<Account[]>({ queryKey: keys.accounts, enabled: false });
@@ -21,7 +24,7 @@ export function AddAccountDialog({ open, onClose, onAdded }: { open: boolean; on
     setAccountName('');
     setPassword('');
     setPendingId(null);
-    setFailure(null);
+    setFailure(false);
     add.reset();
   };
   const close = () => {
@@ -29,14 +32,15 @@ export function AddAccountDialog({ open, onClose, onAdded }: { open: boolean; on
     onClose();
   };
   const finish = (account: Account) => {
-    toast(`${account.personaName ?? account.accountName} eklendi`);
+    const name = account.personaName ?? account.accountName;
+    toast(t(`${name} eklendi`, `${name} added`));
     onAdded(account.id);
     close();
   };
 
   const add = useMutation({
     mutationFn: () => {
-      setFailure(null);
+      setFailure(false);
       return api.addAccount(accountName.trim(), password);
     },
     onSuccess: (account) => {
@@ -53,7 +57,7 @@ export function AddAccountDialog({ open, onClose, onAdded }: { open: boolean; on
     // Giriş Guard adımından sonra başarısız olursa sunucu hesabı siler
     if (!pending) {
       setPendingId(null);
-      setFailure('Steam girişi tamamlanamadı. Bilgileri kontrol edip tekrar dene.');
+      setFailure(true);
       return;
     }
     // Mobil onay verildiyse giriş kendiliğinden tamamlanır
@@ -61,7 +65,7 @@ export function AddAccountDialog({ open, onClose, onAdded }: { open: boolean; on
   }, [pendingId, pendingState, !!pending]);
 
   return (
-    <Dialog open={open} onClose={close} title={pending ? 'Steam Guard' : 'Steam hesabı ekle'}>
+    <Dialog open={open} onClose={close} title={pending ? 'Steam Guard' : t('Steam hesabı ekle', 'Add a Steam account')}>
       {pending ? (
         <GuardForm account={pending} />
       ) : (
@@ -72,7 +76,7 @@ export function AddAccountDialog({ open, onClose, onAdded }: { open: boolean; on
           }}
         >
           <label className="label" htmlFor="add-username">
-            Steam kullanıcı adı
+            {t('Steam kullanıcı adı', 'Steam username')}
           </label>
           <input
             id="add-username"
@@ -83,7 +87,7 @@ export function AddAccountDialog({ open, onClose, onAdded }: { open: boolean; on
             onChange={(e) => setAccountName(e.target.value)}
           />
           <label className="label mt-4" htmlFor="add-password">
-            Şifre
+            {t('Şifre', 'Password')}
           </label>
           <input
             id="add-password"
@@ -93,14 +97,22 @@ export function AddAccountDialog({ open, onClose, onAdded }: { open: boolean; on
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          <ErrorText>{add.error?.message ?? failure}</ErrorText>
+          <ErrorText>
+            {add.error?.message ??
+              (failure
+                ? t('Steam girişi tamamlanamadı. Bilgileri kontrol edip tekrar dene.', 'Steam sign-in did not complete. Check your details and try again.')
+                : null)}
+          </ErrorText>
           <p className="mt-4 flex gap-2 text-sm text-muted">
             <ShieldCheck size={18} className="shrink-0 text-ingame" />
-            Şifren kaydedilmez. Steam'in verdiği oturum anahtarı şifrelenerek saklanır, sonraki açılışlarda şifre sorulmaz.
+            {t(
+              "Şifren kaydedilmez. Steam'in verdiği oturum anahtarı şifrelenerek saklanır, sonraki açılışlarda şifre sorulmaz.",
+              "Your password is never stored. Steam's login token is kept encrypted, so you won't be asked again next time.",
+            )}
           </p>
           <button className="btn-primary mt-5 w-full py-2.5" disabled={!accountName.trim() || !password || add.isPending}>
             {add.isPending && <Spinner />}
-            {add.isPending ? 'Steam\'e bağlanılıyor…' : 'Giriş yap ve ekle'}
+            {add.isPending ? t("Steam'e bağlanılıyor…", 'Connecting to Steam…') : t('Giriş yap ve ekle', 'Sign in and add')}
           </button>
         </form>
       )}

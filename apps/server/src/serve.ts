@@ -5,6 +5,7 @@ import { APP_NAME, VERSION } from './config.js';
 import type { Core } from './core.js';
 import { acquireServerLock } from './lock.js';
 import { logger } from './logger.js';
+import { t } from './i18n.js';
 
 const log = logger.scoped('core');
 
@@ -24,9 +25,14 @@ export async function serve(core: Core) {
   await app.listen({ host: config.host, port: config.port });
 
   const url = `http://127.0.0.1:${config.port}`;
-  log.info(`${APP_NAME} v${VERSION} çalışıyor → panel: ${url}`);
+  log.info(t(`${APP_NAME} v${VERSION} çalışıyor → panel: ${url}`, `${APP_NAME} v${VERSION} is running → panel: ${url}`));
   if (config.host !== '127.0.0.1' && config.host !== 'localhost') {
-    log.warn(`Sunucu ${config.host} adresini dinliyor. Panel yine yalnızca bu bilgisayardan açılır; dışarıdan yalnızca API token ile erişilebilir.`);
+    log.warn(
+      t(
+        `Sunucu ${config.host} adresini dinliyor. Panel yine yalnızca bu bilgisayardan açılır; dışarıdan yalnızca API token ile erişilebilir.`,
+        `Listening on ${config.host}. The panel still only opens on this computer; remote access needs an API token.`,
+      ),
+    );
   }
   openBrowser(url);
 
@@ -36,7 +42,7 @@ export async function serve(core: Core) {
   const shutdown = async () => {
     if (closing) return;
     closing = true;
-    log.info('Kapatılıyor...');
+    log.info(t('Kapatılıyor...', 'Shutting down...'));
     manager.stopAll();
     await app.close();
     releaseLock();

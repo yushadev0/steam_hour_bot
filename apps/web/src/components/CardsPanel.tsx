@@ -2,27 +2,27 @@ import { useMutation } from '@tanstack/react-query';
 import { AlertTriangle, Layers, RefreshCw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { api, upsertAccount } from '../api';
-import { isConnected, useNow } from '../status';
+import { pick, useI18n, type Translate } from '../i18n';
+import { formatHours, isConnected, useNow } from '../status';
 import type { Account, BadgeGame } from '../types';
 import { GameCapsule } from './GameArt';
 import { Spinner, useToast } from './ui';
 
-const hours = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 1 });
-
-function relative(iso: string | null, now: number) {
+function relative(iso: string | null, now: number, t: Translate) {
   if (!iso) return null;
   const minutes = Math.round((Date.parse(iso) - now) / 60_000);
-  if (minutes === 0) return 'şimdi';
-  return minutes > 0 ? `${minutes} dk sonra` : `${-minutes} dk önce`;
+  if (minutes === 0) return t('şimdi', 'just now');
+  return minutes > 0 ? t(`${minutes} dk sonra`, `in ${minutes} min`) : t(`${-minutes} dk önce`, `${-minutes} min ago`);
 }
 
-const dropsLabel = (n: number) => `${n} kart kaldı`;
+const dropsLabel = (n: number, t: Translate) => t(`${n} kart kaldı`, `${n} ${n === 1 ? 'drop' : 'drops'} left`);
 
 /** Kart düşürme modunda hesabın kart durumu: kasılan oyun, sıra ve kontrol zamanları. */
 export function CardsPanel({ account }: { account: Account }) {
   const cards = account.session.cards;
   const now = useNow(15_000);
   const toast = useToast();
+  const { t, lang } = useI18n();
   const check = useMutation({
     mutationFn: () => api.checkCards(account.id),
     onSuccess: upsertAccount,
@@ -35,17 +35,17 @@ export function CardsPanel({ account }: { account: Account }) {
     <section className="rounded-md bg-surface">
       <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
         <h2 className="font-semibold text-bright">
-          Kart düşürme
+          {t('Kart düşürme', 'Card farming')}
           {cards && cards.totalDrops > 0 && (
             <span className="font-normal text-muted tabular-nums">
               {' '}
-              {cards.totalDrops} kart, {queueCount} oyun
+              {t(`${cards.totalDrops} kart, ${queueCount} oyun`, `${cards.totalDrops} drops, ${queueCount} games`)}
             </span>
           )}
         </h2>
         <button className="btn" onClick={() => check.mutate()} disabled={!cards || cards.status === 'checking' || check.isPending}>
           <RefreshCw size={15} className={cards?.status === 'checking' ? 'animate-spin' : ''} />
-          Şimdi kontrol et
+          {t('Şimdi kontrol et', 'Check now')}
         </button>
       </header>
 
@@ -53,35 +53,38 @@ export function CardsPanel({ account }: { account: Account }) {
         {!cards ? (
           <Empty>
             {!account.enabled
-              ? 'Bot bu hesap için kapalı. Açınca kartı kalan oyunlar kontrol edilecek.'
+              ? t(
+                  'Bot bu hesap için kapalı. Açınca kartı kalan oyunlar kontrol edilecek.',
+                  'The bot is off for this account. Turn it on to check for card drops.',
+                )
               : isConnected(account)
-                ? 'Kart düşürme başlatılıyor…'
-                : "Hesap Steam'e bağlanınca kartı kalan oyunlar kontrol edilecek."}
+                ? t('Kart düşürme başlatılıyor…', 'Starting card farming…')
+                : t("Hesap Steam'e bağlanınca kartı kalan oyunlar kontrol edilecek.", 'Card drops are checked once the account is connected to Steam.')}
           </Empty>
         ) : cards.status === 'checking' && !cards.current ? (
           <Empty>
-            <Spinner /> Rozet sayfası okunuyor…
+            <Spinner /> {t('Rozet sayfası okunuyor…', 'Reading the badges page…')}
           </Empty>
         ) : cards.status === 'done' ? (
-          <Empty>Kartı kalan oyun yok. Bot birazdan normal oyun listene döner.</Empty>
+          <Empty>{t('Kartı kalan oyun yok. Bot birazdan normal oyun listene döner.', 'No card drops left. The bot will switch back to your game list.')}</Empty>
         ) : (
           <>
             {cards.error && (
               <p className="mb-4 flex items-start gap-2 rounded-sm bg-warn/10 px-3 py-2 text-sm text-warn">
                 <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                {cards.error}
+                {pick(lang, cards.error, cards.errorEn)}
               </p>
             )}
             {cards.current && <CurrentGame game={cards.current} />}
             {cards.queue.length > 0 && (
               <>
-                <h3 className="mt-5 mb-1 text-sm font-medium text-muted">Sırada</h3>
+                <h3 className="mt-5 mb-1 text-sm font-medium text-muted">{t('Sırada', 'Up next')}</h3>
                 <ul className="divide-y divide-line/60">
                   {cards.queue.map((game) => (
                     <li key={game.appId} className="flex items-center gap-3 py-2">
                       <GameCapsule appId={game.appId} iconUrl={null} width={92} />
                       <span className="min-w-0 flex-1 truncate">{game.name}</span>
-                      <span className="shrink-0 text-sm text-muted tabular-nums">{dropsLabel(game.dropsRemaining)}</span>
+                      <span className="shrink-0 text-sm text-muted tabular-nums">{dropsLabel(game.dropsRemaining, t)}</span>
                     </li>
                   ))}
                 </ul>
@@ -92,13 +95,15 @@ export function CardsPanel({ account }: { account: Account }) {
 
         {cards && (cards.lastCheckAt || cards.nextCheckAt) && (
           <p className="mt-4 text-sm text-muted">
-            {cards.lastCheckAt && <>Son kontrol {relative(cards.lastCheckAt, now)}. </>}
-            {cards.nextCheckAt && <>Sonraki kontrol {relative(cards.nextCheckAt, now)}.</>}
+            {cards.lastCheckAt && t(`Son kontrol ${relative(cards.lastCheckAt, now, t)}. `, `Last checked ${relative(cards.lastCheckAt, now, t)}. `)}
+            {cards.nextCheckAt && t(`Sonraki kontrol ${relative(cards.nextCheckAt, now, t)}.`, `Next check ${relative(cards.nextCheckAt, now, t)}.`)}
           </p>
         )}
         <p className="mt-2 text-sm text-muted">
-          Steam kartları oyun oynandıkça yaklaşık 20-30 dakikada bir düşürür ve yalnızca tek oyunda sayar. Bot kartı biten oyundan
-          sıradakine kendiliğinden geçer; hepsi bitince oyun listene döner.
+          {t(
+            'Steam kartları oyun oynandıkça yaklaşık 20-30 dakikada bir düşürür ve yalnızca tek oyunda sayar. Bot kartı biten oyundan sıradakine kendiliğinden geçer; hepsi bitince oyun listene döner.',
+            'Steam drops cards roughly every 20-30 minutes of play and only counts one game at a time. The bot moves to the next game on its own and returns to your game list when everything has dropped.',
+          )}
         </p>
       </div>
     </section>
@@ -106,15 +111,16 @@ export function CardsPanel({ account }: { account: Account }) {
 }
 
 function CurrentGame({ game }: { game: BadgeGame }) {
+  const { t, lang } = useI18n();
   return (
     <div className="flex flex-wrap items-center gap-4">
       <GameCapsule appId={game.appId} iconUrl={null} width={184} />
       <div className="min-w-0 flex-1">
-        <p className="text-sm text-ingame">Şu an kasılıyor</p>
+        <p className="text-sm text-ingame">{t('Şu an kasılıyor', 'Now farming')}</p>
         <p className="truncate text-lg font-semibold text-bright">{game.name}</p>
         <p className="text-sm text-muted">
-          <span className="text-text tabular-nums">{dropsLabel(game.dropsRemaining)}</span>
-          {game.playtimeHours > 0 && <>, toplam {hours.format(game.playtimeHours)} saat</>}
+          <span className="text-text tabular-nums">{dropsLabel(game.dropsRemaining, t)}</span>
+          {game.playtimeHours > 0 && t(`, toplam ${formatHours(game.playtimeHours, lang)}`, `, ${formatHours(game.playtimeHours, lang)} total`)}
         </p>
       </div>
     </div>

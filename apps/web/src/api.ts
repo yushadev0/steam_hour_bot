@@ -1,4 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
+import { currentLang } from './i18n';
 import type { Account, ApiTokenInfo, IdleMode, OwnedGame, PersonaMode } from './types';
 
 export class ApiError extends Error {
@@ -28,7 +29,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new ApiError(res.status, data.error ?? `İstek başarısız (${res.status})`);
+    const en = currentLang() === 'en';
+    const message = (en ? (data.errorEn ?? data.error) : data.error) ?? (en ? `Request failed (${res.status})` : `İstek başarısız (${res.status})`);
+    throw new ApiError(res.status, message);
   }
   return data as T;
 }

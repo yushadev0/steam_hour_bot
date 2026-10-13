@@ -1,4 +1,5 @@
 import { parse } from 'node-html-parser';
+import { t } from '../i18n.js';
 
 /** Rozet sayfasındaki, kart düşmesi kalan bir oyun */
 export interface BadgeGame {
@@ -9,6 +10,8 @@ export interface BadgeGame {
 }
 
 export class BadgeSessionError extends Error {
+  readonly text = t('Steam web oturumu geçersiz; rozet sayfası okunamadı', 'Steam web session is invalid; could not read the badges page');
+
   constructor() {
     super('Steam web oturumu geçersiz; rozet sayfası okunamadı');
   }

@@ -32,6 +32,7 @@ export interface CardFarm {
   lastCheckAt: string | null;
   nextCheckAt: string | null;
   error: string | null;
+  errorEn: string | null;
 }
 
 export type IdleMode = 'games' | 'cards';
@@ -73,6 +74,7 @@ export interface LogEntry {
   level: 'debug' | 'info' | 'warn' | 'error';
   scope: string;
   message: string;
+  messageEn?: string;
 }
 
 export interface ApiTokenInfo {

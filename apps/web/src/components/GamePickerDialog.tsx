@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { Check, Plus, RefreshCw, Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { api, keys, queryClient, upsertAccount } from '../api';
+import { useI18n } from '../i18n';
 import { formatPlaytime, isConnected, useOwnedGames } from '../status';
 import { MAX_GAMES, type Account, type OwnedGame } from '../types';
 import { GameIcon } from './GameArt';
@@ -14,6 +15,7 @@ export function GamePickerDialog({ account, open, onClose }: { account: Account;
   const [onlySelected, setOnlySelected] = useState(false);
   const [manualId, setManualId] = useState('');
   const toast = useToast();
+  const { t } = useI18n();
 
   // Her açılışta hesabın güncel listesinden başla
   useEffect(() => {
@@ -29,7 +31,8 @@ export function GamePickerDialog({ account, open, onClose }: { account: Account;
     mutationFn: () => api.updateAccount(account.id, { games: selected }),
     onSuccess: (updated) => {
       upsertAccount(updated);
-      toast(updated.games.length ? `${updated.games.length} oyun kaydedildi` : 'Oyun listesi temizlendi');
+      const n = updated.games.length;
+      toast(n ? t(`${n} oyun kaydedildi`, `Saved ${n} ${n === 1 ? 'game' : 'games'}`) : t('Oyun listesi temizlendi', 'Game list cleared'));
       onClose();
     },
   });
@@ -68,7 +71,7 @@ export function GamePickerDialog({ account, open, onClose }: { account: Account;
     <Dialog
       open={open}
       onClose={onClose}
-      title="Kasılacak oyunları seç"
+      title={t('Kasılacak oyunları seç', 'Choose games to idle')}
       wide
       fixedBody
       footer={
@@ -76,11 +79,11 @@ export function GamePickerDialog({ account, open, onClose }: { account: Account;
           <ErrorText>{save.error?.message}</ErrorText>
           <div className="flex justify-end gap-2">
             <button className="btn" onClick={onClose}>
-              Vazgeç
+              {t('Vazgeç', 'Cancel')}
             </button>
             <button className="btn-primary" disabled={!changed || save.isPending} onClick={() => save.mutate()}>
               {save.isPending && <Spinner />}
-              Kaydet
+              {t('Kaydet', 'Save')}
             </button>
           </div>
         </>
@@ -91,8 +94,8 @@ export function GamePickerDialog({ account, open, onClose }: { account: Account;
           <Search size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
           <input
             className="input pl-9"
-            placeholder="Kütüphanede ara"
-            aria-label="Kütüphanede ara"
+            placeholder={t('Kütüphanede ara', 'Search your library')}
+            aria-label={t('Kütüphanede ara', 'Search your library')}
             autoFocus
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -102,8 +105,8 @@ export function GamePickerDialog({ account, open, onClose }: { account: Account;
           className="btn-ghost"
           onClick={() => refresh.mutate()}
           disabled={!isConnected(account) || refresh.isPending}
-          title="Kütüphaneyi Steam'den yeniden yükle"
-          aria-label="Kütüphaneyi yenile"
+          title={t("Kütüphaneyi Steam'den yeniden yükle", 'Reload the library from Steam')}
+          aria-label={t('Kütüphaneyi yenile', 'Reload library')}
         >
           <RefreshCw size={16} className={refresh.isPending ? 'animate-spin' : ''} />
         </button>
@@ -112,17 +115,21 @@ export function GamePickerDialog({ account, open, onClose }: { account: Account;
       <div className="mt-3 flex items-center justify-between text-sm">
         <label className="flex cursor-pointer items-center gap-2 text-muted select-none">
           <input type="checkbox" className="accent-accent" checked={onlySelected} onChange={(e) => setOnlySelected(e.target.checked)} />
-          Yalnızca seçilenler
+          {t('Yalnızca seçilenler', 'Selected only')}
         </label>
         <span className={`tabular-nums ${full ? 'text-warn' : 'text-muted'}`}>
-          {selected.length}/{MAX_GAMES} seçili{full && ', Steam sınırı doldu'}
+          {t(`${selected.length}/${MAX_GAMES} seçili`, `${selected.length}/${MAX_GAMES} selected`)}
+          {full && t(', Steam sınırı doldu', ', Steam limit reached')}
         </span>
       </div>
 
       <div className="-mx-1 mt-2 min-h-32 flex-1 overflow-y-auto">
         {!isConnected(account) && (
           <p className="px-1 py-6 text-center text-sm text-muted">
-            Kütüphane yalnızca hesap Steam'e bağlıyken yüklenebilir. Bu arada AppID ile oyun ekleyebilirsin.
+            {t(
+              "Kütüphane yalnızca hesap Steam'e bağlıyken yüklenebilir. Bu arada AppID ile oyun ekleyebilirsin.",
+              'The library can only be loaded while the account is connected to Steam. You can still add games by AppID.',
+            )}
           </p>
         )}
         {owned.isLoading && (
@@ -147,7 +154,7 @@ export function GamePickerDialog({ account, open, onClose }: { account: Account;
         ))}
         {owned.data && !visible.length && !extra.length && (
           <p className="px-1 py-6 text-center text-sm text-muted">
-            {search ? `"${search}" ile eşleşen oyun yok.` : 'Henüz oyun seçilmedi.'}
+            {search ? t(`"${search}" ile eşleşen oyun yok.`, `No games match "${search}".`) : t('Henüz oyun seçilmedi.', 'No games selected yet.')}
           </p>
         )}
       </div>
@@ -162,14 +169,14 @@ export function GamePickerDialog({ account, open, onClose }: { account: Account;
         <input
           className="input"
           inputMode="numeric"
-          placeholder="Kütüphanende yok mu? AppID gir (ör. 730)"
-          aria-label="AppID ile ekle"
+          placeholder={t('Kütüphanende yok mu? AppID gir (ör. 730)', 'Not in your library? Enter an AppID (e.g. 730)')}
+          aria-label={t('AppID ile ekle', 'Add by AppID')}
           value={manualId}
           onChange={(e) => setManualId(e.target.value.replace(/\D/g, ''))}
         />
         <button className="btn shrink-0" disabled={!manualId || full}>
           <Plus size={16} />
-          Ekle
+          {t('Ekle', 'Add')}
         </button>
       </form>
 
@@ -192,6 +199,7 @@ function GameRow({
   disabled: boolean;
   onToggle: () => void;
 }) {
+  const { t, lang } = useI18n();
   return (
     <button
       type="button"
@@ -213,7 +221,7 @@ function GameRow({
       <GameIcon appId={appId} iconUrl={game?.iconUrl ?? null} />
       <span className="min-w-0 flex-1">
         <span className={`block truncate ${checked ? 'text-bright' : ''}`}>{game?.name ?? name ?? `AppID ${appId}`}</span>
-        <span className="block text-xs text-muted">{game ? formatPlaytime(game.playtimeMinutes) : 'Kütüphanede değil'}</span>
+        <span className="block text-xs text-muted">{game ? formatPlaytime(game.playtimeMinutes, lang) : t('Kütüphanede değil', 'Not in library')}</span>
       </span>
     </button>
   );

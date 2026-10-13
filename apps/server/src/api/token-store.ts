@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { badRequest, notFound } from '../errors.js';
+import { t } from '../i18n.js';
 import { readJson, writeJsonAtomic } from '../store/json-file.js';
 
 const API_TOKEN_PREFIX = 'shb_';
@@ -66,7 +67,7 @@ export class TokenStore {
   /** Yeni token üretir. Düz hali yalnızca burada döner. */
   create(name: string): { token: string; info: ApiTokenInfo } {
     const trimmed = name.trim();
-    if (!trimmed) throw badRequest('Token adı gerekli');
+    if (!trimmed) throw badRequest(t('Token adı gerekli', 'Token name is required'));
     const token = API_TOKEN_PREFIX + randomBytes(32).toString('base64url');
     const record: ApiToken = {
       id: randomBytes(6).toString('hex'),
@@ -84,8 +85,8 @@ export class TokenStore {
 
   revoke(id: string) {
     const before = this.tokens.length;
-    this.tokens = this.tokens.filter((t) => t.id !== id);
-    if (this.tokens.length === before) throw notFound('Token bulunamadı');
+    this.tokens = this.tokens.filter((token) => token.id !== id);
+    if (this.tokens.length === before) throw notFound(t('Token bulunamadı', 'Token not found'));
     this.save();
   }
 }

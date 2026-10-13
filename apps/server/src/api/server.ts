@@ -4,6 +4,7 @@ import { z, ZodError } from 'zod';
 import type { Core } from '../core.js';
 import { AppError, forbidden, unauthorized } from '../errors.js';
 import { logger } from '../logger.js';
+import { t } from '../i18n.js';
 import { registerRoutes } from './routes.js';
 import { loadWebAssets, registerStatic } from './static.js';
 import type { TokenStore } from './token-store.js';
@@ -68,7 +69,7 @@ export async function buildServer(core: Core, tokens: TokenStore, options: { ser
     if (!path.startsWith('/api/') || path === '/api/health') return;
     const token = tokenOf(request);
     if (token) {
-      if (!tokens.verify(token)) throw unauthorized('API token geçersiz');
+      if (!tokens.verify(token)) throw unauthorized(t('API token geçersiz', 'Invalid API token'));
       request.authKind = 'token';
       return;
     }
@@ -76,30 +77,48 @@ export async function buildServer(core: Core, tokens: TokenStore, options: { ser
       request.authKind = 'local';
       return;
     }
-    throw request.headers.origin ? forbidden('Bu istek kabul edilmedi') : unauthorized('Panel yalnızca botun çalıştığı bilgisayardan kullanılabilir');
+    throw request.headers.origin
+      ? forbidden(t('Bu istek kabul edilmedi', 'Request rejected'))
+      : unauthorized(t('Panel yalnızca botun çalıştığı bilgisayardan kullanılabilir', 'The panel can only be used on the computer the bot runs on'));
   });
 
+  // error: Türkçe, errorEn: İngilizce (panel seçili dile göre gösterir)
   app.setErrorHandler((error, request, reply) => {
-    if (error instanceof AppError) return reply.status(error.status).send({ error: error.message });
+    if (error instanceof AppError) return reply.status(error.status).send({ error: error.message, errorEn: error.messageEn });
     if (error instanceof ZodError) {
       const issue = error.issues[0];
       const field = issue?.path.join('.');
-      return reply.status(400).send({ error: field ? `${field}: ${issue?.message}` : (issue?.message ?? 'Geçersiz istek') });
+      return reply.status(400).send({
+        error: field ? `${field}: ${issue?.message}` : (issue?.message ?? 'Geçersiz istek'),
+        errorEn: field ? `Invalid value: ${field}` : 'Invalid request',
+      });
     }
     const status = (error as { statusCode?: number }).statusCode;
-    if (status && status < 500) return reply.status(status).send({ error: (error as Error).message });
+    if (status && status < 500) {
+      const message = (error as Error).message;
+      return reply.status(status).send({ error: message, errorEn: message });
+    }
     logger.log('error', 'api', `${request.method} ${request.url}: ${(error as Error).stack ?? error}`);
-    return reply.status(500).send({ error: 'Sunucu hatası' });
+    return reply.status(500).send({ error: 'Sunucu hatası', errorEn: 'Server error' });
   });
 
-  app.setNotFoundHandler((request, reply) => reply.status(404).send({ error: `Bulunamadı: ${request.method} ${request.url.split('?')[0]}` }));
+  app.setNotFoundHandler((request, reply) => {
+    const route = `${request.method} ${request.url.split('?')[0]}`;
+    reply.status(404).send({ error: `Bulunamadı: ${route}`, errorEn: `Not found: ${route}` });
+  });
 
   registerRoutes(app, core, tokens);
   registerWebSocket(app, core);
 
   if (options.serveWeb) {
     const web = loadWebAssets();
-    logger.log('info', 'core', web ? `Panel dosyaları: ${web.source}` : 'Panel dosyaları bulunamadı; yalnızca API çalışıyor.');
+    logger.log(
+      'info',
+      'core',
+      web
+        ? t(`Panel dosyaları: ${web.source}`, `Panel files: ${web.source}`)
+        : t('Panel dosyaları bulunamadı; yalnızca API çalışıyor.', 'Panel files not found; only the API is running.'),
+    );
     registerStatic(app, web?.assets ?? null);
   }
   return app;

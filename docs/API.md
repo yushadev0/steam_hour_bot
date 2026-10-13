@@ -1,6 +1,6 @@
 # API
 
-Base URL: `http://<host>:8090/api`. All bodies are JSON. Errors are returned as `{ "error": "message" }` with a matching HTTP status.
+Base URL: `http://<host>:8090/api`. All bodies are JSON. Errors are returned as `{ "error": "Turkish message", "errorEn": "English message" }` with a matching HTTP status. Log entries likewise carry `message` (Turkish) and `messageEn`, and `session.cards` has `error` and `errorEn`.
 
 ## Access
 

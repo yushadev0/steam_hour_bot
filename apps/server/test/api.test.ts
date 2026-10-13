@@ -201,7 +201,9 @@ describe('Hesaplar', () => {
   });
 
   it('olmayan hesap için 404, silinen hesap listeden kalkar', async () => {
-    assert.equal((await api('GET', '/api/accounts/ghost')).statusCode, 404);
+    const missing = await api('GET', '/api/accounts/ghost');
+    assert.equal(missing.statusCode, 404);
+    assert.deepEqual(missing.json(), { error: 'Hesap bulunamadı: ghost', errorEn: 'Account not found: ghost' });
     await addAccount();
     assert.equal((await api('DELETE', '/api/accounts/user')).statusCode, 200);
     assert.deepEqual((await api('GET', '/api/accounts')).json(), []);

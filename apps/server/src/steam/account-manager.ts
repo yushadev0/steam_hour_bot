@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { notFound } from '../errors.js';
+import { t } from '../i18n.js';
 import { logger } from '../logger.js';
 import { accountIdOf, type AccountPatch, type AccountRecord, type AccountStore } from '../store/account-store.js';
 import { AppNameCache } from '../store/app-names.js';
@@ -72,7 +73,7 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
 
   private session(id: string): AccountSession {
     const session = this.sessions.get(accountIdOf(id));
-    if (!session) throw notFound(`Hesap bulunamadı: ${id}`);
+    if (!session) throw notFound(t(`Hesap bulunamadı: ${id}`, `Account not found: ${id}`));
     return session;
   }
 
@@ -96,7 +97,7 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
 
   require(id: string): AccountStatus {
     const status = this.status(id);
-    if (!status) throw notFound(`Hesap bulunamadı: ${id}`);
+    if (!status) throw notFound(t(`Hesap bulunamadı: ${id}`, `Account not found: ${id}`));
     return status;
   }
 
@@ -108,7 +109,7 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
   startAll() {
     this.running = true;
     const accounts = this.store.list().filter((a) => a.enabled);
-    log.info(`${accounts.length} etkin hesap başlatılıyor.`);
+    log.info(t(`${accounts.length} etkin hesap başlatılıyor.`, `Starting ${accounts.length} enabled account(s).`));
     for (const account of accounts) this.session(account.id).start();
   }
 
@@ -129,7 +130,7 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
     const account = this.store.create(accountName);
     const session = this.createSession(account.id);
     this.emitAccount(account.id);
-    log.info(`Hesap ekleniyor: ${account.accountName}`);
+    log.info(t(`Hesap ekleniyor: ${account.accountName}`, `Adding account: ${account.accountName}`));
     return this.beginLogin(account.id, () =>
       session.loginWithPassword(password).catch((err) => {
         this.removeAccount(account.id);
@@ -188,7 +189,11 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
     const session = this.session(id);
 
     if (before.enabled !== after.enabled) {
-      log.info(`${after.accountName} ${after.enabled ? 'etkinleştirildi' : 'devre dışı bırakıldı'}.`);
+      log.info(
+        after.enabled
+          ? t(`${after.accountName} etkinleştirildi.`, `${after.accountName} enabled.`)
+          : t(`${after.accountName} devre dışı bırakıldı.`, `${after.accountName} disabled.`),
+      );
       if (after.enabled && this.running) session.start();
       else session.stop();
     } else {
@@ -214,7 +219,7 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
     session?.removeAllListeners();
     this.sessions.delete(accountId);
     this.store.remove(accountId);
-    log.info(`Hesap silindi: ${accountId}`);
+    log.info(t(`Hesap silindi: ${accountId}`, `Account removed: ${accountId}`));
     this.emit('removed', accountId);
   }
 }

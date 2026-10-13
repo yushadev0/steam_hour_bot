@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { join } from 'node:path';
 import SteamUser from 'steam-user';
 import { badRequest, conflict } from '../errors.js';
+import { t } from '../i18n.js';
 import { logger, type ScopedLogger } from '../logger.js';
 import type { AppNameCache } from '../store/app-names.js';
 import type { AccountRecord, AccountStore } from '../store/account-store.js';
@@ -183,7 +184,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       this.troubleTimer = setTimeout(() => {
         this.troubleTimer = null;
         this.troubleReported = true;
-        this.log.warn('Uzun süredir Steam\'e bağlanılamıyor.');
+        this.log.warn(t("Uzun süredir Steam'e bağlanılamıyor.", 'Unable to reach Steam for a long time.'));
         this.emit('event', { type: 'connection_problem', reason: this.lastError, since: this.troubleSince!.toISOString() });
       }, CONNECTION_PROBLEM_AFTER_MS);
       return;
@@ -204,7 +205,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     if (this.client) return;
     const token = this.store.getToken(this.accountId);
     if (!token) {
-      this.log.warn('Kayıtlı token yok, şifre ile giriş gerekli.');
+      this.log.warn(t('Kayıtlı token yok, şifre ile giriş gerekli.', 'No stored login; sign in with the password.'));
       this.setState('needs_login');
       return;
     }
@@ -223,10 +224,10 @@ export class AccountSession extends EventEmitter<SessionEvents> {
   }
 
   submitGuardCode(code: string) {
-    if (!this.guardCallback) throw conflict('Şu an Steam Guard kodu beklenmiyor');
+    if (!this.guardCallback) throw conflict(t('Şu an Steam Guard kodu beklenmiyor', 'No Steam Guard code is expected right now'));
     const callback = this.guardCallback;
     this.guardCallback = null;
-    this.log.info('Steam Guard kodu gönderildi.');
+    this.log.info(t('Steam Guard kodu gönderildi.', 'Steam Guard code sent.'));
     this.setState('connecting');
     callback(code.trim());
   }
@@ -241,7 +242,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
 
   /** Kart durumunu hemen kontrol et (panelden) */
   checkCards() {
-    if (!this.farmer) throw conflict('Kart düşürme modu şu an çalışmıyor');
+    if (!this.farmer) throw conflict(t('Kart düşürme modu şu an çalışmıyor', 'Card farming is not running'));
     this.farmer.checkNow();
   }
 
@@ -250,7 +251,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     if (!force && this.ownedGamesCache && Date.now() - this.ownedGamesCache.at < OWNED_GAMES_CACHE_MS) {
       return this.ownedGamesCache.games;
     }
-    if (!this.client || !this.loggedOn || !this.client.steamID) throw conflict("Hesap şu an Steam'e bağlı değil");
+    if (!this.client || !this.loggedOn || !this.client.steamID) throw conflict(t("Hesap şu an Steam'e bağlı değil", 'The account is not connected to Steam'));
     const { apps } = await this.client.getUserOwnedApps(this.client.steamID, { includePlayedFreeGames: true });
     const games = apps
       .map((app) => ({
@@ -268,7 +269,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
   stop() {
     if (this.client && this.loggedOn) {
       this.client.gamesPlayed([]);
-      this.log.info('Oturum kapatılıyor.');
+      this.log.info(t('Oturum kapatılıyor.', 'Signing out.'));
     }
     this.teardown();
     this.setState('stopped');
@@ -277,7 +278,11 @@ export class AccountSession extends EventEmitter<SessionEvents> {
   private connect(details: { refreshToken: string } | { accountName: string; password: string }) {
     this.teardown();
     this.setState('connecting');
-    this.log.info('refreshToken' in details ? 'Token ile giriş yapılıyor...' : 'Şifre ile giriş yapılıyor...');
+    this.log.info(
+      'refreshToken' in details
+        ? t('Token ile giriş yapılıyor...', 'Signing in with the stored login...')
+        : t('Şifre ile giriş yapılıyor...', 'Signing in with the password...'),
+    );
 
     const options = { autoRelogin: true, renewRefreshTokens: true, dataDirectory: this.deps.steamDataDir };
     const client = this.deps.createClient ? this.deps.createClient(options) : new SteamUser(options);
@@ -291,7 +296,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       this.loggedOn = true;
       this.retryDelay = RETRY_BASE_MS;
       const steamId = client.steamID?.getSteamID64() ?? null;
-      this.log.info(`Giriş başarılı (SteamID ${steamId}).`);
+      this.log.info(t(`Giriş başarılı (SteamID ${steamId}).`, `Signed in (SteamID ${steamId}).`));
       this.store.update(this.accountId, { steamId });
       this.setState('running', { lastError: null });
       this.finishPasswordLogin(null);
@@ -305,7 +310,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       // Oyun adlarını önceden öğren (panel ve loglar için)
       this.getOwnedGames()
         .then(() => this.emit('change', this.snapshot()))
-        .catch((err: Error) => this.log.debug(`Kütüphane alınamadı: ${err.message}`));
+        .catch((err: Error) => this.log.debug(t(`Kütüphane alınamadı: ${err.message}`, `Could not load the library: ${err.message}`)));
     });
 
     client.on('accountInfo', (name) => {
@@ -317,24 +322,32 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       this.guardCallback = callback;
       this.log.warn(
         lastCodeWrong
-          ? 'Steam Guard kodu hatalı, yeni kod bekleniyor.'
+          ? t('Steam Guard kodu hatalı, yeni kod bekleniyor.', 'Wrong Steam Guard code; waiting for a new one.')
           : guard.type === 'email'
-            ? `Steam Guard kodu ${domain} adresine gönderildi.`
-            : 'Steam Guard: mobil uygulamadaki kodu gir ya da girişi uygulamadan onayla.',
+            ? t(`Steam Guard kodu ${domain} adresine gönderildi.`, `Steam Guard code sent to ${domain}.`)
+            : t(
+                'Steam Guard: mobil uygulamadaki kodu gir ya da girişi uygulamadan onayla.',
+                'Steam Guard: enter the code from the mobile app or approve the sign-in there.',
+              ),
       );
       this.setState('awaiting_guard', { guard });
     });
 
     client.on('refreshToken', (token) => {
       this.store.setToken(this.accountId, token);
-      this.log.info('Refresh token kaydedildi.');
+      this.log.info(t('Refresh token kaydedildi.', 'Login token saved.'));
     });
 
     client.on('playingState', (blocked, playingApp) => {
       if (blocked === this.blocked) return;
       this.blocked = blocked;
       if (blocked) {
-        this.log.info(`Hesapla başka bir yerde oynanıyor (${this.deps.appNames.label(playingApp)}), bekleniyor.`);
+        this.log.info(
+          t(
+            `Hesapla başka bir yerde oynanıyor (${this.deps.appNames.label(playingApp)}), bekleniyor.`,
+            `The account is playing elsewhere (${this.deps.appNames.label(playingApp)}); waiting.`,
+          ),
+        );
         this.setState('blocked');
         this.emit('event', {
           type: 'playing_elsewhere',
@@ -344,7 +357,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
         this.blockedByApp = playingApp || null;
         this.emit('change', this.snapshot());
       } else {
-        this.log.info('Hesap serbest kaldı, oyunlar tekrar gösteriliyor.');
+        this.log.info(t('Hesap serbest kaldı, oyunlar tekrar gösteriliyor.', 'The account is free again; idling resumes.'));
         this.setState('running');
         this.applyGames();
       }
@@ -356,7 +369,8 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       this.blocked = false;
       if (this.state === 'stopped') return;
       // autoRelogin açık: steam-user kendisi yeniden bağlanır.
-      this.log.warn(`Bağlantı koptu (${msg ?? EResult[eresult]}), yeniden bağlanılıyor.`);
+      const why = msg ?? EResult[eresult];
+      this.log.warn(t(`Bağlantı koptu (${why}), yeniden bağlanılıyor.`, `Disconnected (${why}); reconnecting.`));
       this.setState('connecting');
     });
 
@@ -386,7 +400,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
         if (!this.applyTimer) this.applyGames();
       });
       farmer.on('finished', () => {
-        this.log.info('Tüm kartlar düştü; normal oyun listesine dönülüyor.');
+        this.log.info(t('Tüm kartlar düştü; normal oyun listesine dönülüyor.', 'All cards dropped; back to the game list.'));
         this.emit('event', { type: 'cards_finished' });
         this.store.update(this.accountId, { mode: 'games' });
         this.syncFarmer();
@@ -449,33 +463,33 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     this.teardown();
 
     if (AUTH_ERRORS.has(eresult)) {
-      this.log.error(`Giriş reddedildi: ${reason}`);
+      this.log.error(t(`Giriş reddedildi: ${reason}`, `Sign-in rejected: ${reason}`));
       // Şifre ile yapılan denemede kayıtlı token'a dokunma; token girişi reddedildiyse token geçersizdir.
       if (!this.passwordLogin) this.store.setToken(this.accountId, null);
       this.setState('needs_login', { lastError: reason });
       // Şifreyle giriş kullanıcının kendi işlemi; yalnızca kendiliğinden düşen oturum bildirilir
       if (!this.passwordLogin) this.emit('event', { type: 'login_required', reason });
-      this.finishPasswordLogin(badRequest(`Steam girişi reddedildi: ${reason}`));
+      this.finishPasswordLogin(badRequest(t(`Steam girişi reddedildi: ${reason}`, `Steam rejected the sign-in: ${reason}`)));
       return;
     }
 
     // Şifre ile girişte (ör. hesap eklerken) tekrar deneme yapılmaz, sonuç çağırana döner.
     if (this.passwordLogin) {
-      this.log.error(`Giriş başarısız: ${reason}`);
+      this.log.error(t(`Giriş başarısız: ${reason}`, `Sign-in failed: ${reason}`));
       this.setState('needs_login', { lastError: reason });
-      this.finishPasswordLogin(badRequest(`Steam girişi başarısız: ${reason}`));
+      this.finishPasswordLogin(badRequest(t(`Steam girişi başarısız: ${reason}`, `Steam sign-in failed: ${reason}`)));
       return;
     }
 
     let delay: number;
     if (eresult === EResult.LoggedInElsewhere || eresult === EResult.LogonSessionReplaced) {
-      this.log.info('Hesaba başka bir yerden oyunla girildi; bot geri çekildi.');
+      this.log.info(t('Hesaba başka bir yerden oyunla girildi; bot geri çekildi.', 'A game was started on this account elsewhere; the bot stepped back.'));
       delay = ELSEWHERE_RETRY_MS;
     } else if (eresult === EResult.RateLimitExceeded) {
-      this.log.warn('Steam istek sınırına takıldı.');
+      this.log.warn(t('Steam istek sınırına takıldı.', 'Hit the Steam rate limit.'));
       delay = RATE_LIMIT_RETRY_MS;
     } else {
-      this.log.error(`Hata: ${reason}`);
+      this.log.error(t(`Hata: ${reason}`, `Error: ${reason}`));
       delay = this.retryDelay;
       this.retryDelay = Math.min(this.retryDelay * 2, RETRY_MAX_MS);
     }
@@ -489,7 +503,8 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     this.state = 'waiting_retry';
     this.trackConnection('waiting_retry');
     this.emit('change', this.snapshot());
-    this.log.info(`${Math.round(delay / 1000)} sn sonra tekrar denenecek.`);
+    const seconds = Math.round(delay / 1000);
+    this.log.info(t(`${seconds} sn sonra tekrar denenecek.`, `Retrying in ${seconds} s.`));
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
       this.start();
@@ -514,7 +529,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
           this.emit('change', this.snapshot());
         }
       })
-      .catch((err: Error) => this.log.debug(`Avatar alınamadı: ${err.message}`));
+      .catch((err: Error) => this.log.debug(t(`Avatar alınamadı: ${err.message}`, `Could not load the avatar: ${err.message}`)));
   }
 
   private applyPersona() {
@@ -537,10 +552,11 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       return;
     }
     this.client.gamesPlayed(toPlay);
+    const names = toPlay.map((id) => this.deps.appNames.label(id)).join(', ');
     this.log.info(
       toPlay.length
-        ? `Oynuyor gösteriliyor: ${toPlay.map((id) => this.deps.appNames.label(id)).join(', ')}`
-        : 'Oyun listesi boş, hiçbir oyun gösterilmiyor.',
+        ? t(`Oynuyor gösteriliyor: ${names}`, `Now playing: ${names}`)
+        : t('Oyun listesi boş, hiçbir oyun gösterilmiyor.', 'The game list is empty; nothing is being played.'),
     );
   }
 

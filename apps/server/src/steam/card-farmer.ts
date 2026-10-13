@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { t, type Text } from '../i18n.js';
 import type { ScopedLogger } from '../logger.js';
 import { BadgeSessionError, type BadgeGame } from './badges.js';
 
@@ -21,7 +22,9 @@ export interface CardFarmSnapshot {
   totalDrops: number;
   lastCheckAt: string | null;
   nextCheckAt: string | null;
+  /** Türkçe hata metni */
   error: string | null;
+  errorEn: string | null;
 }
 
 export interface CardDrop {
@@ -59,7 +62,7 @@ export class CardFarmer extends EventEmitter<FarmerEvents> {
   private queue: BadgeGame[] = [];
   private lastCheckAt: Date | null = null;
   private nextCheckAt: Date | null = null;
-  private error: string | null = null;
+  private error: Text | null = null;
   private timer: NodeJS.Timeout | null = null;
   private checking = false;
   private stopped = true;
@@ -80,7 +83,8 @@ export class CardFarmer extends EventEmitter<FarmerEvents> {
       totalDrops: all.reduce((sum, g) => sum + g.dropsRemaining, 0),
       lastCheckAt: this.lastCheckAt?.toISOString() ?? null,
       nextCheckAt: this.nextCheckAt?.toISOString() ?? null,
-      error: this.error,
+      error: this.error?.tr ?? null,
+      errorEn: this.error?.en ?? null,
     };
   }
 
@@ -92,7 +96,7 @@ export class CardFarmer extends EventEmitter<FarmerEvents> {
   start() {
     if (!this.stopped) return;
     this.stopped = false;
-    this.log.info('Kart düşürme modu başladı.');
+    this.log.info(t('Kart düşürme modu başladı.', 'Card farming started.'));
     void this.check();
   }
 
@@ -141,7 +145,10 @@ export class CardFarmer extends EventEmitter<FarmerEvents> {
       this.update(drops, previous);
     } catch (err) {
       if (this.stopped) return;
-      this.error = err instanceof BadgeSessionError ? err.message : `Kart bilgisi alınamadı: ${(err as Error).message}`;
+      this.error =
+        err instanceof BadgeSessionError
+          ? err.text
+          : t(`Kart bilgisi alınamadı: ${(err as Error).message}`, `Could not read card drops: ${(err as Error).message}`);
       this.log.warn(this.error);
       // Kasılan oyun varsa ona devam et; yoksa hata durumunda bekle
       if (!this.current) this.status = 'error';
@@ -159,7 +166,7 @@ export class CardFarmer extends EventEmitter<FarmerEvents> {
       const before = previous.dropsRemaining;
       const now = drops.find((g) => g.appId === previous.appId)?.dropsRemaining ?? 0;
       if (now < before) {
-        this.log.info(`${previous.name}: ${before - now} kart düştü, ${now} kaldı.`);
+        this.log.info(t(`${previous.name}: ${before - now} kart düştü, ${now} kaldı.`, `${previous.name}: ${before - now} card(s) dropped, ${now} left.`));
         drop = { game: previous, dropped: before - now, remaining: now };
       }
     }
@@ -174,7 +181,7 @@ export class CardFarmer extends EventEmitter<FarmerEvents> {
     if (!current) {
       this.status = 'done';
       this.nextCheckAt = null;
-      this.log.info('Kartı kalan oyun yok, kart düşürme tamamlandı.');
+      this.log.info(t('Kartı kalan oyun yok, kart düşürme tamamlandı.', 'No card drops left; card farming finished.'));
       this.emit('change', this.snapshot());
       this.emit('games', []);
       this.emit('finished');
@@ -183,8 +190,13 @@ export class CardFarmer extends EventEmitter<FarmerEvents> {
 
     this.status = 'farming';
     if (current.appId !== previous?.appId) {
-      const rest = this.queue.length ? `, sırada ${this.queue.length} oyun daha var` : '';
-      this.log.info(`Kart kasılıyor: ${current.name} (${current.dropsRemaining} kart kaldı${rest}).`);
+      const n = this.queue.length;
+      this.log.info(
+        t(
+          `Kart kasılıyor: ${current.name} (${current.dropsRemaining} kart kaldı${n ? `, sırada ${n} oyun daha var` : ''}).`,
+          `Farming cards: ${current.name} (${current.dropsRemaining} left${n ? `, ${n} more game(s) queued` : ''}).`,
+        ),
+      );
       this.emit('games', this.games);
     }
     this.schedule(CHECK_INTERVAL_MS);

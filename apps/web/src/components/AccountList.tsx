@@ -1,5 +1,6 @@
 import { Plus } from 'lucide-react';
-import { describeStatus, displayName, toneText, useNow, useOwnedGames } from '../status';
+import { useI18n } from '../i18n';
+import { describeStatus, displayName, isIdling, toneText, useNow, useOwnedGames } from '../status';
 import type { Account } from '../types';
 import { Avatar } from './ui';
 
@@ -15,14 +16,15 @@ export function AccountList({
   onSelect: (id: string) => void;
   onAdd: () => void;
 }) {
-  const idling = accounts.filter((a) => a.session.state === 'running' && a.games.length).length;
+  const { t } = useI18n();
+  const idling = accounts.filter(isIdling).length;
   return (
-    <nav aria-label="Hesaplar" className="flex h-full flex-col">
+    <nav aria-label={t('Hesaplar', 'Accounts')} className="flex h-full flex-col">
       <div className="flex items-baseline justify-between px-4 pt-4 pb-2">
-        <h2 className="font-semibold text-bright">Hesaplar</h2>
+        <h2 className="font-semibold text-bright">{t('Hesaplar', 'Accounts')}</h2>
         {accounts.length > 0 && (
           <span className="text-sm text-muted tabular-nums">
-            {idling}/{accounts.length} kasıyor
+            {t(`${idling}/${accounts.length} kasıyor`, `${idling}/${accounts.length} idling`)}
           </span>
         )}
       </div>
@@ -34,7 +36,7 @@ export function AccountList({
       <div className="border-t border-line p-2">
         <button className="btn-ghost w-full justify-start py-2.5" onClick={onAdd}>
           <Plus size={18} />
-          Hesap ekle
+          {t('Hesap ekle', 'Add account')}
         </button>
       </div>
     </nav>
@@ -44,7 +46,8 @@ export function AccountList({
 function AccountRow({ account, selected, onSelect }: { account: Account; selected: boolean; onSelect: () => void }) {
   const owned = useOwnedGames(account);
   const now = useNow(5000);
-  const status = describeStatus(account, owned.data, now);
+  const { t } = useI18n();
+  const status = describeStatus(account, owned.data, now, t);
   return (
     <li>
       <button

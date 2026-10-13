@@ -1,5 +1,6 @@
 import { LoaderCircle, X } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useI18n } from '../i18n';
 import type { Tone } from '../status';
 import { toneRing } from '../status';
 
@@ -23,6 +24,7 @@ export function Dialog({
   /** true ise gövde kaymaz; içerik kendi kaydırma alanını yönetir */
   fixedBody?: boolean;
 }) {
+  const { t } = useI18n();
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = ref.current;
@@ -46,7 +48,7 @@ export function Dialog({
         <div className="flex max-h-[85vh] flex-col">
           <header className="flex items-center justify-between border-b border-line px-5 py-3.5">
             <h2 className="text-lg font-semibold text-bright">{title}</h2>
-            <button className="btn-ghost -mr-2" onClick={onClose} aria-label="Kapat">
+            <button className="btn-ghost -mr-2" onClick={onClose} aria-label={t('Kapat', 'Close')}>
               <X size={18} />
             </button>
           </header>
