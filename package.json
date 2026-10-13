@@ -6,9 +6,11 @@
     "apps/*"
   ],
   "scripts": {
-    "spike": "npm run spike -w apps/server --",
+    "start": "npm run start -w apps/server",
+    "cli": "npm run cli -w apps/server --",
     "smoke": "npm run smoke -w apps/server",
-    "spike:build": "npm run spike:build -w apps/server",
+    "build:exe": "npm run build:exe -w apps/server",
+    "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "overrides": {

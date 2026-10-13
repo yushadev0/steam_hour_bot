@@ -2,7 +2,7 @@
 
 Headless Steam hour booster for Windows and Linux. Signs in to your Steam account and shows the games you pick (by AppID) as "in-game" so playtime accumulates — no game install required.
 
-> **Status:** early development (Phase 0 done — proof of concept). See [PLAN.md](PLAN.md) for the roadmap.
+> **Status:** early development — core engine and CLI are ready (Phase 1). See [PLAN.md](PLAN.md) for the roadmap.
 
 ## Planned features
 
@@ -13,18 +13,39 @@ Headless Steam hour booster for Windows and Linux. Signs in to your Steam accoun
 - Card farming mode
 - Docker image and standalone Windows `.exe`
 
-## Proof of concept
+## Usage (CLI)
 
-Requires Node.js 22+.
+Requires Node.js 22+ (or use the standalone binary).
 
 ```bash
 npm install
-npm run spike -- 730            # show CS2 as playing
-npm run spike -- 730 --invisible
-npm run smoke                   # anonymous Steam connection test
+npm run cli -- add <username>          # sign in (password + Steam Guard asked once)
+npm run cli -- games <username> 730 440
+npm run cli -- persona <username> invisible
+npm run cli -- list
+npm start                              # run all enabled accounts
+npm run smoke                          # anonymous Steam connection test
 ```
 
-The refresh token is saved to `data/` (git-ignored) so the next run won't ask for your password.
+Data is stored in `data/` (override with `SHB_DATA_DIR`). Refresh tokens are encrypted with AES-256-GCM using `SHB_SECRET`, or an auto-generated `data/secret.key`. Passwords are never stored.
+
+The bot backs off automatically when you start a game on the same account elsewhere, and resumes when you're done.
+
+## Building a standalone binary
+
+Requires [Bun](https://bun.sh).
+
+```bash
+npm run build:exe                                        # current platform
+cd apps/server && bun scripts/build-exe.ts bun-linux-x64 # cross-compile
+```
+
+## Development
+
+```bash
+npm test
+npm run typecheck
+```
 
 ## Disclaimer
 
