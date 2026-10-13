@@ -2,7 +2,7 @@
 
 Headless Steam hour booster for Windows and Linux. Signs in to your Steam account and shows the games you pick (by AppID) as "in-game" so playtime accumulates — no game install required.
 
-> **Status:** web panel, API and core engine are ready (Phase 3). Card farming and Docker are next. See [PLAN.md](PLAN.md).
+> **Status:** web panel, API, core engine and card farming are ready (Phase 4). Docker is next. See [PLAN.md](PLAN.md).
 
 ## Planned features
 
@@ -10,7 +10,7 @@ Headless Steam hour booster for Windows and Linux. Signs in to your Steam accoun
 - Web panel (React + Vite) with live status
 - Steam Guard support (email / mobile code / mobile approval), refresh-token login — passwords are never stored
 - Online / Invisible mode
-- Card farming mode
+- Card farming mode: reads your badges page, idles games with card drops left one at a time, then returns to your game list
 - Docker image and standalone Windows `.exe`
 
 ## Usage

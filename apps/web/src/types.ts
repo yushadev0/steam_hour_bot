@@ -17,6 +17,25 @@ export interface GuardRequest {
   lastCodeWrong: boolean;
 }
 
+export interface BadgeGame {
+  appId: number;
+  name: string;
+  dropsRemaining: number;
+  playtimeHours: number;
+}
+
+export interface CardFarm {
+  status: 'checking' | 'farming' | 'done' | 'error';
+  current: BadgeGame | null;
+  queue: BadgeGame[];
+  totalDrops: number;
+  lastCheckAt: string | null;
+  nextCheckAt: string | null;
+  error: string | null;
+}
+
+export type IdleMode = 'games' | 'cards';
+
 export interface Account {
   id: string;
   accountName: string;
@@ -25,7 +44,7 @@ export interface Account {
   avatarUrl: string | null;
   games: number[];
   persona: PersonaMode;
-  mode: 'games' | 'cards';
+  mode: IdleMode;
   enabled: boolean;
   hasToken: boolean;
   /** Seçili oyunların sunucunun bildiği adları (AppID → ad) */
@@ -38,6 +57,7 @@ export interface Account {
     retryAt: string | null;
     blockedByApp: number | null;
     runningSince: string | null;
+    cards: CardFarm | null;
   };
 }
 

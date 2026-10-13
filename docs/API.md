@@ -35,11 +35,12 @@ Token management is only allowed locally.
 | POST | `/accounts/:id/login` | `{ password }` | Re-login when `session.state` is `needs_login` |
 | POST | `/accounts/:id/guard` | `{ code }` | Steam Guard code |
 | POST | `/accounts/:id/guard/wait` | | Wait for mobile-app approval |
+| POST | `/accounts/:id/cards/check` | | Card mode: re-check the badges page now |
 | GET | `/accounts/:id/games` | `?refresh=true` | Owned games sorted by playtime (cached for 10 min) |
 
 - `games`: up to 32 AppIDs
 - `persona`: `online` or `invisible`
-- `mode`: `games` or `cards` (card farming is planned for phase 4)
+- `mode`: `games` (idle the selected games) or `cards` (card farming: idles games with card drops left one by one; switches back to `games` when none are left)
 
 ### Login flow
 
@@ -57,19 +58,36 @@ Token management is only allowed locally.
   "accountName": "MyUser",
   "steamId": "7656119...",
   "personaName": "yusha",
+  "avatarUrl": "https://avatars.steamstatic.com/…_medium.jpg",
   "games": [730, 440],
   "persona": "online",
   "mode": "games",
   "enabled": true,
   "hasToken": true,
+  "gameNames": { "730": "Counter-Strike 2" }, // known names of the selected games
   "createdAt": "2026-10-13T10:00:00.000Z",
   "session": {
     "state": "running",        // stopped | connecting | awaiting_guard | running | blocked | waiting_retry | needs_login
     "guard": null,             // { type, domain, lastCodeWrong } while awaiting_guard
     "lastError": null,
     "retryAt": null,           // ISO time of next retry while waiting_retry
-    "blockedByApp": null       // AppID being played elsewhere while blocked
+    "blockedByApp": null,      // AppID being played elsewhere while blocked
+    "runningSince": null,      // ISO time since the session has been idling
+    "cards": null              // card mode only: see below
   }
+}
+```
+
+### Card mode (`session.cards`)
+
+```jsonc
+{
+  "status": "farming",          // checking | farming | done | error
+  "current": { "appId": 1086940, "name": "Baldur's Gate 3", "dropsRemaining": 2, "playtimeHours": 0 },
+  "queue": [ { "appId": 252490, "name": "Rust", "dropsRemaining": 3, "playtimeHours": 1.6 } ],
+  "totalDrops": 5,
+  "lastCheckAt": "…", "nextCheckAt": "…",   // checked every 15 min and shortly after Steam reports new items
+  "error": null
 }
 ```
 

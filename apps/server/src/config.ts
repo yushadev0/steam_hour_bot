@@ -1,7 +1,7 @@
 import { join, resolve } from 'node:path';
 
 export const APP_NAME = "yusha's Steam Hour Bot";
-export const VERSION = '0.3.0';
+export const VERSION = '0.4.0';
 
 /** Steam aynı anda en fazla bu kadar oyunu "oynuyor" gösterebilir. */
 export const MAX_GAMES = 32;

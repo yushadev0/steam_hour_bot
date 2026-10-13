@@ -5,6 +5,8 @@ import { badRequest, conflict } from '../errors.js';
 import { logger, type ScopedLogger } from '../logger.js';
 import type { AppNameCache } from '../store/app-names.js';
 import type { AccountRecord, AccountStore } from '../store/account-store.js';
+import { BadgeSessionError, fetchCardDrops, type BadgeGame } from './badges.js';
+import { CardFarmer, type CardFarmSnapshot } from './card-farmer.js';
 
 const { EResult, EPersonaState } = SteamUser;
 
@@ -41,6 +43,8 @@ export interface SessionSnapshot {
   blockedByApp: number | null;
   /** running durumundaysa ne zamandan beri kesintisiz kasılıyor */
   runningSince: string | null;
+  /** Kart düşürme modu çalışıyorsa durumu */
+  cards: CardFarmSnapshot | null;
 }
 
 export interface OwnedGame {
@@ -59,6 +63,8 @@ export interface SessionDeps {
   appNames: AppNameCache;
   /** Testlerde sahte istemci vermek için */
   createClient?: ClientFactory;
+  /** Testlerde rozet sayfası yerine sahte veri vermek için */
+  fetchCardDrops?: (steamId: string, cookies: string[]) => Promise<BadgeGame[]>;
 }
 
 type SessionEvents = {
@@ -87,6 +93,7 @@ const RATE_LIMIT_RETRY_MS = 30 * 60_000;
 /** Girişten sonra playingState bilgisinin gelmesi için beklenen süre. */
 const PLAYING_STATE_GRACE_MS = 3_000;
 const OWNED_GAMES_CACHE_MS = 10 * 60_000;
+const WEB_SESSION_TIMEOUT_MS = 30_000;
 
 /**
  * Tek bir Steam hesabının oturumu. steam-user istemcisini sarar; giriş, Steam Guard,
@@ -112,6 +119,11 @@ export class AccountSession extends EventEmitter<SessionEvents> {
   private retryDelay = RETRY_BASE_MS;
   private ownedGamesCache: { at: number; games: OwnedGame[] } | null = null;
 
+  private farmer: CardFarmer | null = null;
+  /** steamcommunity.com çerezleri (rozet sayfasını okumak için) */
+  private webCookies: string[] | null = null;
+  private webSessionWaiters: { resolve: (cookies: string[]) => void; reject: (err: Error) => void }[] = [];
+
   constructor(
     readonly accountId: string,
     private readonly store: AccountStore,
@@ -133,6 +145,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       retryAt: this.retryAt?.toISOString() ?? null,
       blockedByApp: this.blockedByApp,
       runningSince: this.runningSince?.toISOString() ?? null,
+      cards: this.farmer?.snapshot() ?? null,
     };
   }
 
@@ -183,11 +196,18 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     callback(code.trim());
   }
 
-  /** Hesap ayarları (oyunlar, görünürlük) değiştiğinde çağrılır. */
+  /** Hesap ayarları (oyunlar, görünürlük, mod) değiştiğinde çağrılır. */
   refresh() {
     if (!this.loggedOn) return;
     this.applyPersona();
+    this.syncFarmer();
     this.applyGames();
+  }
+
+  /** Kart durumunu hemen kontrol et (panelden) */
+  checkCards() {
+    if (!this.farmer) throw conflict('Kart düşürme modu şu an çalışmıyor');
+    this.farmer.checkNow();
   }
 
   /** Hesabın sahip olduğu oyunlar (oynama süresiyle). Oturum açık olmalı; 10 dk önbelleklenir. */
@@ -243,6 +263,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
 
       this.applyPersona();
       this.fetchAvatar(client);
+      this.syncFarmer();
       // Steam, hesabın başka yerde oyunda olup olmadığını girişten hemen sonra bildirir.
       // O bilgi gelmeden oyun gösterirsek kullanıcının gerçek oturumunu etkileyebiliriz.
       this.applyTimer = setTimeout(() => this.applyGames(), PLAYING_STATE_GRACE_MS);
@@ -299,7 +320,81 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       this.setState('connecting');
     });
 
+    client.on('webSession', (_sessionId, cookies) => {
+      this.webCookies = cookies;
+      for (const waiter of this.webSessionWaiters.splice(0)) waiter.resolve(cookies);
+    });
+
+    // Steam yeni eşya bildirdi: kart düşmüş olabilir
+    client.on('newItems', () => this.farmer?.onNewItems());
+
     client.on('error', (err) => this.handleError(err as Error & { eresult?: number }));
+  }
+
+  /** Kart modu açık, hesap etkin ve oturum açıksa kart kasıcıyı çalıştırır; değilse durdurur. */
+  private syncFarmer() {
+    const account = this.account;
+    const want = this.loggedOn && account.enabled && account.mode === 'cards';
+    if (want && !this.farmer) {
+      const farmer = new CardFarmer(() => this.loadCardDrops(), this.log);
+      farmer.on('change', () => this.emit('change', this.snapshot()));
+      // Giriş sonrası bekleme sürüyorsa oyunlar o bitince uygulanır
+      farmer.on('games', () => {
+        if (!this.applyTimer) this.applyGames();
+      });
+      farmer.on('finished', () => {
+        this.log.info('Tüm kartlar düştü; normal oyun listesine dönülüyor.');
+        this.store.update(this.accountId, { mode: 'games' });
+        this.syncFarmer();
+        this.applyGames();
+        this.emit('change', this.snapshot());
+      });
+      this.farmer = farmer;
+      farmer.start();
+    } else if (!want && this.farmer) {
+      this.farmer.stop();
+      this.farmer.removeAllListeners();
+      this.farmer = null;
+      this.emit('change', this.snapshot());
+    }
+  }
+
+  private async loadCardDrops(): Promise<BadgeGame[]> {
+    const steamId = this.client?.steamID?.getSteamID64();
+    if (!steamId) throw new Error("Hesap Steam'e bağlı değil");
+    const fetchDrops = this.deps.fetchCardDrops ?? ((id: string, cookies: string[]) => fetchCardDrops(id, cookies));
+    try {
+      return await fetchDrops(steamId, await this.getWebCookies());
+    } catch (err) {
+      if (!(err instanceof BadgeSessionError)) throw err;
+      // Çerezlerin süresi dolmuş olabilir; yenileyip bir kez daha dene
+      this.webCookies = null;
+      return fetchDrops(steamId, await this.getWebCookies());
+    }
+  }
+
+  private getWebCookies(): Promise<string[]> {
+    if (this.webCookies) return Promise.resolve(this.webCookies);
+    const client = this.client;
+    if (!client || !this.loggedOn) return Promise.reject(new Error("Hesap Steam'e bağlı değil"));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.webSessionWaiters = this.webSessionWaiters.filter((w) => w !== waiter);
+        reject(new Error('Steam web oturumu açılamadı'));
+      }, WEB_SESSION_TIMEOUT_MS);
+      const waiter = {
+        resolve: (cookies: string[]) => {
+          clearTimeout(timer);
+          resolve(cookies);
+        },
+        reject: (err: Error) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      };
+      this.webSessionWaiters.push(waiter);
+      if (this.webSessionWaiters.length === 1) client.webLogOn();
+    });
   }
 
   private handleError(err: Error & { eresult?: number }) {
@@ -387,8 +482,13 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     // Hesap başka yerde oyundayken gamesPlayed göndermek o oturumu etkileyebilir.
     if (!this.client || !this.loggedOn || this.blocked) return;
 
-    const { games, enabled } = this.account;
-    const toPlay = enabled ? games : [];
+    const { games, enabled, mode } = this.account;
+    const toPlay = !enabled ? [] : mode === 'cards' ? (this.farmer?.games ?? []) : games;
+    if (mode === 'cards' && enabled && !toPlay.length) {
+      // Kart modunda kasılacak oyun henüz belli değil (kontrol sürüyor ya da kart kalmadı)
+      this.client.gamesPlayed([]);
+      return;
+    }
     this.client.gamesPlayed(toPlay);
     this.log.info(
       toPlay.length
@@ -402,6 +502,13 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     if (this.retryTimer) clearTimeout(this.retryTimer);
     if (this.applyTimer) clearTimeout(this.applyTimer);
     this.retryTimer = this.applyTimer = null;
+    if (this.farmer) {
+      this.farmer.stop();
+      this.farmer.removeAllListeners();
+      this.farmer = null;
+    }
+    this.webCookies = null;
+    for (const waiter of this.webSessionWaiters.splice(0)) waiter.reject(new Error('Oturum kapandı'));
     if (this.client) {
       const client = this.client;
       this.client = null;

@@ -1,9 +1,10 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Clock, Eye, EyeOff, Gamepad2, Info, KeyRound, Pencil, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Clock, Eye, EyeOff, Gamepad2, Info, KeyRound, Layers, Pencil, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api, keys, upsertAccount } from '../api';
 import { describeStatus, displayName, formatDuration, formatPlaytime, gameName, toneText, useNow, useOwnedGames } from '../status';
-import { MAX_GAMES, type Account, type LogEntry, type OwnedGame, type PersonaMode } from '../types';
+import { MAX_GAMES, type Account, type IdleMode, type LogEntry, type OwnedGame, type PersonaMode } from '../types';
+import { CardsPanel } from './CardsPanel';
 import { GameCapsule } from './GameArt';
 import { GamePickerDialog } from './GamePickerDialog';
 import { GuardForm } from './GuardForm';
@@ -24,7 +25,9 @@ export function AccountDetail({ account, onRemoved }: { account: Account; onRemo
   });
 
   const removeGame = (appId: number) => update.mutate({ games: account.games.filter((id) => id !== appId) });
-  const idling = account.session.state === 'running' && account.games.length > 0;
+  const cardsMode = account.mode === 'cards';
+  const idling =
+    account.session.state === 'running' && (cardsMode ? !!account.session.cards?.current : account.games.length > 0);
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-5 p-4 sm:p-6">
@@ -70,42 +73,63 @@ export function AccountDetail({ account, onRemoved }: { account: Account; onRemo
 
       <Attention account={account} now={now} />
 
-      {/* Kasılan oyunlar */}
-      <section className="rounded-md bg-surface">
-        <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
-          <h2 className="font-semibold text-bright">
-            Kasılan oyunlar <span className="font-normal text-muted tabular-nums">{account.games.length}/{MAX_GAMES}</span>
-          </h2>
-          <button className="btn" onClick={() => setPicking(true)}>
-            <Pencil size={15} />
-            Oyunları düzenle
-          </button>
-        </header>
-        {account.games.length ? (
-          <ul className="divide-y divide-line/60">
-            {account.games.map((appId) => (
-              <GameItem
-                key={appId}
-                appId={appId}
-                name={gameName(appId, account, owned.data)}
-                game={owned.data?.find((g) => g.appId === appId)}
-                active={idling}
-                onRemove={() => removeGame(appId)}
-                disabled={update.isPending}
-              />
-            ))}
-          </ul>
-        ) : (
-          <div className="flex flex-col items-center px-4 py-10 text-center">
-            <Gamepad2 size={32} className="text-muted" />
-            <p className="mt-3 text-bright">Henüz oyun seçmedin</p>
-            <p className="mt-1 max-w-sm text-sm text-muted">Kütüphanenden en fazla {MAX_GAMES} oyun seç; bot hepsini aynı anda oynuyor gösterir.</p>
-            <button className="btn-primary mt-4" onClick={() => setPicking(true)}>
-              Oyun seç
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted">
+          {cardsMode
+            ? 'Kartı kalan oyunlar sırayla, tek tek kasılıyor.'
+            : 'Seçtiğin oyunların hepsi aynı anda oynuyor görünüyor.'}
+        </p>
+        <Segmented<IdleMode>
+          label="Kasma modu"
+          value={account.mode}
+          disabled={update.isPending}
+          onChange={(mode) => update.mutate({ mode })}
+          options={[
+            { value: 'games', label: 'Saat kas', icon: <Gamepad2 size={15} /> },
+            { value: 'cards', label: 'Kart düşür', icon: <Layers size={15} /> },
+          ]}
+        />
+      </div>
+
+      {cardsMode ? (
+        <CardsPanel account={account} />
+      ) : (
+        <section className="rounded-md bg-surface">
+          <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
+            <h2 className="font-semibold text-bright">
+              Kasılan oyunlar <span className="font-normal text-muted tabular-nums">{account.games.length}/{MAX_GAMES}</span>
+            </h2>
+            <button className="btn" onClick={() => setPicking(true)}>
+              <Pencil size={15} />
+              Oyunları düzenle
             </button>
-          </div>
-        )}
-      </section>
+          </header>
+          {account.games.length ? (
+            <ul className="divide-y divide-line/60">
+              {account.games.map((appId) => (
+                <GameItem
+                  key={appId}
+                  appId={appId}
+                  name={gameName(appId, account, owned.data)}
+                  game={owned.data?.find((g) => g.appId === appId)}
+                  active={idling}
+                  onRemove={() => removeGame(appId)}
+                  disabled={update.isPending}
+                />
+              ))}
+            </ul>
+          ) : (
+            <div className="flex flex-col items-center px-4 py-10 text-center">
+              <Gamepad2 size={32} className="text-muted" />
+              <p className="mt-3 text-bright">Henüz oyun seçmedin</p>
+              <p className="mt-1 max-w-sm text-sm text-muted">Kütüphanenden en fazla {MAX_GAMES} oyun seç; bot hepsini aynı anda oynuyor gösterir.</p>
+              <button className="btn-primary mt-4" onClick={() => setPicking(true)}>
+                Oyun seç
+              </button>
+            </div>
+          )}
+        </section>
+      )}
 
       <ActivityLog accountId={account.id} />
 

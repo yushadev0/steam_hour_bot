@@ -3,7 +3,7 @@ import { notFound } from '../errors.js';
 import { logger } from '../logger.js';
 import { accountIdOf, type AccountPatch, type AccountRecord, type AccountStore } from '../store/account-store.js';
 import { AppNameCache } from '../store/app-names.js';
-import { AccountSession, steamDataDirOf, type ClientFactory, type OwnedGame, type SessionSnapshot } from './account-session.js';
+import { AccountSession, steamDataDirOf, type ClientFactory, type OwnedGame, type SessionDeps, type SessionSnapshot } from './account-session.js';
 
 /** Hesap kaydı + canlı oturum durumu (token hariç). */
 export type AccountStatus = Omit<AccountRecord, 'refreshToken'> & {
@@ -37,6 +37,7 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
     private readonly store: AccountStore,
     dataDir: string,
     private readonly clientFactory?: ClientFactory,
+    private readonly cardDropsFetcher?: SessionDeps['fetchCardDrops'],
   ) {
     super();
     this.steamDataDir = steamDataDirOf(dataDir);
@@ -49,6 +50,7 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
       steamDataDir: this.steamDataDir,
       appNames: this.appNames,
       createClient: this.clientFactory,
+      fetchCardDrops: this.cardDropsFetcher,
     });
     session.on('change', () => this.emitAccount(id));
     this.sessions.set(id, session);
@@ -180,6 +182,11 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
       session.refresh();
     }
     this.emitAccount(id);
+    return this.status(id)!;
+  }
+
+  checkCards(id: string): AccountStatus {
+    this.session(id).checkCards();
     return this.status(id)!;
   }
 

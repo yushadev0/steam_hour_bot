@@ -59,6 +59,9 @@ class DemoClient extends EventEmitter {
 
   gamesPlayed() {}
   setPersona() {}
+  webLogOn() {
+    setTimeout(() => this.emit('webSession', 'demo', ['demo=1']), 300);
+  }
   logOff() {}
   async getUserOwnedApps() {
     return { app_count: LIBRARY.length, apps: LIBRARY };
@@ -74,14 +77,31 @@ const seed = [
   { name: 'yusha_main', games: [730, 570, 440], persona: 'online' as const },
   { name: 'yusha_alt', games: [578080], persona: 'invisible' as const },
   { name: 'old_expired', games: [252490], persona: 'online' as const },
+  { name: 'kart_hesabi', games: [730], persona: 'online' as const, mode: 'cards' as const },
 ];
-for (const { name, games, persona } of seed) {
+for (const { name, games, persona, mode } of seed) {
   store.create(name);
-  store.update(name, { games, persona });
+  store.update(name, { games, persona, mode: mode ?? 'games' });
   store.setToken(name, `token-${name}`);
 }
 
-const manager = new AccountManager(store, dataDir, () => new DemoClient() as unknown as SteamUser);
+/** Kart modu için sahte rozet verisi: her kontrolde kasılan oyunun bir kartı düşer */
+const cardDrops = [
+  { appId: 1086940, name: "Baldur's Gate 3", dropsRemaining: 2, playtimeHours: 0 },
+  { appId: 252490, name: 'Rust', dropsRemaining: 3, playtimeHours: 1.6 },
+  { appId: 1172470, name: 'Apex Legends', dropsRemaining: 4, playtimeHours: 20.3 },
+];
+let checks = 0;
+const fetchDemoDrops = async () => {
+  await new Promise((r) => setTimeout(r, 800));
+  if (checks++ > 0) {
+    const current = cardDrops.filter((g) => g.dropsRemaining > 0).sort((a, b) => a.dropsRemaining - b.dropsRemaining)[0];
+    if (current) current.dropsRemaining--;
+  }
+  return cardDrops.filter((g) => g.dropsRemaining > 0).map((g) => ({ ...g }));
+};
+
+const manager = new AccountManager(store, dataDir, () => new DemoClient() as unknown as SteamUser, fetchDemoDrops);
 const config = loadConfig({ ...process.env, SHB_DATA_DIR: dataDir });
 const app = await buildServer({ config, store, manager }, new TokenStore(dataDir), { serveWeb: true });
 await app.listen({ host: config.host, port: config.port });

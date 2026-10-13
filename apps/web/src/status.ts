@@ -44,6 +44,12 @@ export function describeStatus(account: Account, games: OwnedGame[] | undefined,
   const { session } = account;
   switch (session.state) {
     case 'running': {
+      if (account.mode === 'cards') {
+        const current = session.cards?.current;
+        if (current) return { tone: 'ingame', text: `Kart düşürüyor: ${current.name} (${current.dropsRemaining})` };
+        if (session.cards?.status === 'done') return { tone: 'online', text: 'Kartı kalan oyun yok' };
+        return { tone: 'online', text: 'Kartlar kontrol ediliyor' };
+      }
       if (!account.games.length) return { tone: 'online', text: 'Çevrimiçi, oyun seçilmedi' };
       const first = gameName(account.games[0]!, account, games);
       const more = account.games.length > 1 ? ` +${account.games.length - 1}` : '';

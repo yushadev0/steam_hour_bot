@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/react-query';
-import type { Account, ApiTokenInfo, OwnedGame, PersonaMode } from './types';
+import type { Account, ApiTokenInfo, IdleMode, OwnedGame, PersonaMode } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -49,8 +49,9 @@ export const api = {
   relogin: (id: string, password: string) => request<Account>('POST', `/accounts/${id}/login`, { password }),
   submitGuard: (id: string, code: string) => request<Account>('POST', `/accounts/${id}/guard`, { code }),
   waitGuard: (id: string) => request<Account>('POST', `/accounts/${id}/guard/wait`),
-  updateAccount: (id: string, patch: Partial<{ games: number[]; persona: PersonaMode; enabled: boolean }>) =>
+  updateAccount: (id: string, patch: Partial<{ games: number[]; persona: PersonaMode; enabled: boolean; mode: IdleMode }>) =>
     request<Account>('PATCH', `/accounts/${id}`, patch),
+  checkCards: (id: string) => request<Account>('POST', `/accounts/${id}/cards/check`),
   removeAccount: (id: string) => request<{ ok: true }>('DELETE', `/accounts/${id}`),
   ownedGames: (id: string, refresh = false) => request<OwnedGame[]>('GET', `/accounts/${id}/games${refresh ? '?refresh=true' : ''}`),
 

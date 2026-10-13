@@ -59,6 +59,6 @@ steam_hour_bot/
 | 1. Çekirdek | Hesap yöneticisi, giriş/Guard akışı, idler, yeniden bağlanma, kalıcılık, CLI | ✅ |
 | 2. API | REST + WebSocket, yerel erişim, API token ([docs/API.md](docs/API.md)) | ✅ |
 | 3. Web paneli | Hesap listesi/durum, hesap ekleme, oyun seçici, mod ayarları, canlı log; panel exe'ye gömülü | ✅ |
-| 4. Kart modu | Rozet sayfası okuma, sıralı kasma, otomatik geçiş | |
+| 4. Kart modu | Rozet sayfası okuma, sıralı kasma, otomatik geçiş | ✅ |
 | 5. Dağıtım | Dockerfile, compose, Windows `.exe`, README | |
 | 6. yassistant | İleri aşama | |

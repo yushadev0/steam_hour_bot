@@ -106,6 +106,12 @@ export function registerRoutes(app: FastifyInstance, core: Core, tokens: TokenSt
     return manager.waitForLogin(id);
   });
 
+  /** Kart modunda rozet sayfasını hemen yeniden kontrol eder */
+  app.post('/api/accounts/:id/cards/check', async (request) => {
+    const { id } = idParams.parse(request.params);
+    return manager.checkCards(id);
+  });
+
   app.get('/api/accounts/:id/games', async (request) => {
     const { id } = idParams.parse(request.params);
     const { refresh } = gamesQuery.parse(request.query);
