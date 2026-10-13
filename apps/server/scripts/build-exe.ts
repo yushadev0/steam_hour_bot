@@ -9,18 +9,19 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 /**
- * steam-user lzma'yı `requireWithFallback('lzma-native', 'lzma')` ile dinamik yüklüyor;
- * bundler bunu göremediği için paket binary'ye girmiyor ve açılışta çöküyor.
- * Satırı statik require'a çeviriyoruz (lzma-native native modül, binary'de zaten kullanılamaz).
+ * steam-user lzma'yı `requireWithFallback('lzma-native', 'lzma')` ile dinamik yüklüyor; lzma paketi
+ * de asıl kodunu __dirname'den kurduğu yoldan yüklüyor. İkisi de derlenmiş binary'de başka bir
+ * makinede çalışmaz. LZMA yalnızca steam-user'ın oyun dosyası (depot) indirmesinde gerekiyor ve
+ * bot bunu kullanmıyor; yerine çağrılırsa hata veren bir yer tutucu koyuyoruz.
  */
-const staticLzma: BunPlugin = {
-  name: 'steam-user-static-lzma',
+const stubLzma: BunPlugin = {
+  name: 'steam-user-stub-lzma',
   setup(build) {
     build.onLoad({ filter: /steam-user[\\/]components[\\/]cdn_compression\.js$/ }, async (args) => {
       const source = await Bun.file(args.path).text();
       const patched = source.replace(
         "requireWithFallback('lzma-native', 'lzma')",
-        "require('lzma')",
+        "({ decompress(_data, callback) { callback(null, new Error('LZMA bu derlemede desteklenmiyor')); } })",
       );
       if (patched === source) throw new Error('cdn_compression.js beklenen satırı içermiyor; steam-user güncellenmiş olabilir');
       return { contents: patched, loader: 'js' };
@@ -88,7 +89,7 @@ const outfile = `dist/steam-hour-bot${target.includes('windows') ? '.exe' : targ
 const result = await Bun.build({
   entrypoints: ['src/cli.ts'],
   compile: { target, outfile },
-  plugins: [staticLzma, inlineSteamPem, embedWeb],
+  plugins: [stubLzma, inlineSteamPem, embedWeb],
   minify: true,
 });
 
