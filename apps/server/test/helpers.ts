@@ -28,7 +28,12 @@ export class FakeClient extends EventEmitter {
     return {
       app_count: 2,
       apps: [
-        { appid: 440, name: 'Team Fortress 2', playtime_forever: 60, img_icon_url: 'abc' },
+        {
+          appid: 440,
+          name: 'Team Fortress 2',
+          playtime_forever: 60,
+          img_icon_url: 'https://steamcdn-a.akamaihd.net/steamcommunity/public/images/apps/440/e3f595a92552da3d664ad00277fad2107345f743.jpg',
+        },
         { appid: 730, name: 'Counter-Strike 2', playtime_forever: 1200, img_icon_url: '' },
       ],
     };

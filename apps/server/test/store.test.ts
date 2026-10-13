@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { AccountStore, normalizeGames } from '../src/store/account-store.js';
 import { resolveSecret, Vault } from '../src/store/vault.js';
+import { iconUrlOf } from '../src/steam/account-session.js';
 
 const tempDir = () => mkdtempSync(join(tmpdir(), 'shb-test-'));
 
@@ -80,5 +81,24 @@ describe('AccountStore', () => {
     const store = new AccountStore(tempDir(), new Vault('k'));
     store.create('u');
     assert.throws(() => store.create('U'), /zaten var/);
+  });
+});
+
+describe('iconUrlOf', () => {
+  const hash = '8dbc71957312bbd3baea65848b545be9eae2a355';
+  const expected = `https://cdn.akamai.steamstatic.com/steamcommunity/public/images/apps/730/${hash}.jpg`;
+
+  it("steam-user'ın eski alan adlı adresini güncel CDN'e taşır", () => {
+    assert.equal(iconUrlOf(730, `https://steamcdn-a.akamaihd.net/steamcommunity/public/images/apps/730/${hash}.jpg`), expected);
+  });
+
+  it('yalnızca hash gelirse adresi kurar', () => {
+    assert.equal(iconUrlOf(730, hash), expected);
+  });
+
+  it('boş ya da tanınmayan değerde null döner', () => {
+    assert.equal(iconUrlOf(730, ''), null);
+    assert.equal(iconUrlOf(730, null), null);
+    assert.equal(iconUrlOf(730, 'garbage'), null);
   });
 });

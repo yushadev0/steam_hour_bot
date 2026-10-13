@@ -177,7 +177,11 @@ describe('Hesaplar', () => {
       games.map((g: { appId: number }) => g.appId),
       [730, 440],
     );
-    assert.match(games[1].iconUrl, /\/440\/abc\.jpg$/);
+    assert.equal(
+      games[1].iconUrl,
+      'https://cdn.akamai.steamstatic.com/steamcommunity/public/images/apps/440/e3f595a92552da3d664ad00277fad2107345f743.jpg',
+    );
+    assert.equal(games[0].iconUrl, null, 'ikonu olmayan oyun null');
   });
 
   it('olmayan hesap için 404, silinen hesap listeden kalkar', async () => {

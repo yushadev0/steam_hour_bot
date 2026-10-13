@@ -4,7 +4,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api, keys, upsertAccount } from '../api';
 import { describeStatus, displayName, formatDuration, formatPlaytime, gameName, toneText, useNow, useOwnedGames } from '../status';
 import { MAX_GAMES, type Account, type LogEntry, type OwnedGame, type PersonaMode } from '../types';
-import { GameIcon, GamePickerDialog } from './GamePickerDialog';
+import { GameCapsule } from './GameArt';
+import { GamePickerDialog } from './GamePickerDialog';
 import { GuardForm } from './GuardForm';
 import { Avatar, Dialog, ErrorText, Segmented, Spinner, Switch, useToast } from './ui';
 
@@ -138,7 +139,7 @@ function GameItem({
 }) {
   return (
     <li className="group flex items-center gap-3 px-4 py-2.5 sm:px-5">
-      <GameIcon url={game?.iconUrl ?? null} size={36} />
+      <GameCapsule appId={appId} iconUrl={game?.iconUrl ?? null} />
       <div className="min-w-0 flex-1">
         <p className={`truncate ${active ? 'text-ingame' : 'text-bright'}`}>{name}</p>
         <p className="text-xs text-muted">

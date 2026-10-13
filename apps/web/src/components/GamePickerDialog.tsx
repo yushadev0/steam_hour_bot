@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, keys, queryClient, upsertAccount } from '../api';
 import { formatPlaytime, isConnected, useOwnedGames } from '../status';
 import { MAX_GAMES, type Account, type OwnedGame } from '../types';
+import { GameIcon } from './GameArt';
 import { Dialog, ErrorText, Spinner, useToast } from './ui';
 
 export function GamePickerDialog({ account, open, onClose }: { account: Account; open: boolean; onClose: () => void }) {
@@ -209,19 +210,11 @@ function GameRow({
       >
         {checked && <Check size={14} strokeWidth={3} />}
       </span>
-      <GameIcon url={game?.iconUrl ?? null} />
+      <GameIcon appId={appId} iconUrl={game?.iconUrl ?? null} />
       <span className="min-w-0 flex-1">
         <span className={`block truncate ${checked ? 'text-bright' : ''}`}>{game?.name ?? name ?? `AppID ${appId}`}</span>
         <span className="block text-xs text-muted">{game ? formatPlaytime(game.playtimeMinutes) : 'Kütüphanede değil'}</span>
       </span>
     </button>
-  );
-}
-
-export function GameIcon({ url, size = 32 }: { url: string | null; size?: number }) {
-  return url ? (
-    <img src={url} alt="" loading="lazy" width={size} height={size} className="shrink-0 rounded-[2px]" />
-  ) : (
-    <span className="shrink-0 rounded-[2px] bg-raised" style={{ width: size, height: size }} />
   );
 }

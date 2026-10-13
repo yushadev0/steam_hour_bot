@@ -202,9 +202,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
         appId: app.appid,
         name: app.name,
         playtimeMinutes: app.playtime_forever,
-        iconUrl: app.img_icon_url
-          ? `https://media.steampowered.com/steamcommunity/public/images/apps/${app.appid}/${app.img_icon_url}.jpg`
-          : null,
+        iconUrl: iconUrlOf(app.appid, app.img_icon_url),
       }))
       .sort((a, b) => b.playtimeMinutes - a.playtimeMinutes);
     this.ownedGamesCache = { at: Date.now(), games };
@@ -415,6 +413,18 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     this.loggedOn = false;
     this.blocked = false;
   }
+}
+
+/**
+ * Oyun ikonunun adresi. steam-user img_icon_url'i zaten tam adrese çeviriyor ama eski
+ * steamcdn-a.akamaihd.net alan adını kullanıyor; güncel CDN'e taşıyoruz. Yalnızca hash
+ * gelirse adresi biz kuruyoruz.
+ */
+export function iconUrlOf(appId: number, icon: string | null | undefined): string | null {
+  if (!icon) return null;
+  const hash = icon.match(/([0-9a-f]{40})\.jpg$/i)?.[1] ?? (/^[0-9a-f]{40}$/i.test(icon) ? icon : null);
+  if (!hash) return icon.startsWith('https://') ? icon : null;
+  return `https://cdn.akamai.steamstatic.com/steamcommunity/public/images/apps/${appId}/${hash}.jpg`;
 }
 
 export function steamDataDirOf(dataDir: string) {
