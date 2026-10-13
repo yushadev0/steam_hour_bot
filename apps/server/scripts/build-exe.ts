@@ -29,6 +29,27 @@ const staticLzma: BunPlugin = {
 };
 
 /**
+ * @doctormckay/steam-crypto, Steam'in açık anahtarını `readFileSync(__dirname + '/system.pem')`
+ * ile okur. Derlenmiş binary'de __dirname derleme makinesindeki yol olarak kalır ve başka bir
+ * makinede dosya bulunamaz; anahtarı derleme sırasında koda gömüyoruz.
+ */
+const inlineSteamPem: BunPlugin = {
+  name: 'steam-crypto-inline-pem',
+  setup(build) {
+    build.onLoad({ filter: /@doctormckay[\\/]steam-crypto[\\/]index\.js$/ }, async (args) => {
+      const source = await Bun.file(args.path).text();
+      const pem = readFileSync(join(args.path, '..', 'system.pem'), 'utf8');
+      const patched = source.replace(
+        "require('fs').readFileSync(__dirname + '/system.pem')",
+        `Buffer.from(${JSON.stringify(pem)})`,
+      );
+      if (patched === source) throw new Error('steam-crypto beklenen satırı içermiyor; paket güncellenmiş olabilir');
+      return { contents: patched, loader: 'js' };
+    });
+  },
+};
+
+/**
  * src/web-assets.ts boş bir yer tutucudur; derlemede içeriğini apps/web/dist dosyalarıyla
  * (base64) değiştirerek paneli binary'ye gömüyoruz. Böylece exe tek başına yeterli olur.
  */
@@ -67,7 +88,7 @@ const outfile = `dist/steam-hour-bot${target.includes('windows') ? '.exe' : targ
 const result = await Bun.build({
   entrypoints: ['src/cli.ts'],
   compile: { target, outfile },
-  plugins: [staticLzma, embedWeb],
+  plugins: [staticLzma, inlineSteamPem, embedWeb],
   minify: true,
 });
 
