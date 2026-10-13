@@ -27,7 +27,7 @@ class Logger extends EventEmitter<{ entry: [LogEntry] }> {
     if (this.buffer.length > BUFFER_SIZE) this.buffer.shift();
 
     if (LEVEL_ORDER[level] >= LEVEL_ORDER[this.minLevel]) {
-      const line = `[${new Date(entry.time).toLocaleTimeString()}] ${level.toUpperCase().padEnd(5)} [${scope}] ${message}`;
+      const line = `[${new Date(entry.time).toLocaleTimeString('tr-TR', { hour12: false })}] ${level.toUpperCase().padEnd(5)} [${scope}] ${message}`;
       (level === 'error' ? console.error : console.log)(line);
     }
     this.emit('entry', entry);

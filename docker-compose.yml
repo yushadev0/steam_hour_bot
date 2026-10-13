@@ -11,6 +11,7 @@ services:
     user: "${SHB_UID:-1000}:${SHB_GID:-1000}"
     environment:
       SHB_PORT: "8090"
+      TZ: Europe/Istanbul
     volumes:
       - ./data:/data
     stop_grace_period: 15s
