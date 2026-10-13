@@ -56,7 +56,7 @@ steam_hour_bot/
 |---|---|---|
 | 0. Deneme | `steam-user` ile giriş + oyun gösterme; Bun `.exe` derlemesinin doğrulanması | ✅ |
 | 1. Çekirdek | Hesap yöneticisi, giriş/Guard akışı, idler, yeniden bağlanma, kalıcılık, CLI | ✅ |
-| 2. API | REST + WebSocket, panel girişi, API token | |
+| 2. API | REST + WebSocket, panel girişi, API token ([docs/API.md](docs/API.md)) | ✅ |
 | 3. Web paneli | Giriş, hesap listesi/durum, hesap ekleme, oyun seçici, mod ayarları, canlı log | |
 | 4. Kart modu | Rozet sayfası okuma, sıralı kasma, otomatik geçiş | |
 | 5. Dağıtım | Dockerfile, compose, Windows `.exe`, README | |

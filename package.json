@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "start": "npm run start -w apps/server",
+    "dev": "npm run dev -w apps/server",
     "cli": "npm run cli -w apps/server --",
     "smoke": "npm run smoke -w apps/server",
     "build:exe": "npm run build:exe -w apps/server",

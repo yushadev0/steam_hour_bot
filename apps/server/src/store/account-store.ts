@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { z } from 'zod';
 import { MAX_GAMES } from '../config.js';
+import { badRequest, conflict, notFound } from '../errors.js';
 import { readJson, writeJsonAtomic } from './json-file.js';
 import type { Vault } from './vault.js';
 
@@ -43,9 +44,9 @@ export function accountIdOf(accountName: string) {
 export function normalizeGames(games: unknown[]): number[] {
   const ids = games.map((g) => Number(g));
   const invalid = ids.filter((id) => !Number.isInteger(id) || id <= 0);
-  if (invalid.length) throw new Error(`Geçersiz AppID: ${invalid.join(', ')}`);
+  if (invalid.length) throw badRequest(`Geçersiz AppID: ${invalid.join(', ')}`);
   const unique = [...new Set(ids)];
-  if (unique.length > MAX_GAMES) throw new Error(`Steam aynı anda en fazla ${MAX_GAMES} oyun gösterebilir`);
+  if (unique.length > MAX_GAMES) throw badRequest(`Steam aynı anda en fazla ${MAX_GAMES} oyun gösterebilir`);
   return unique;
 }
 
@@ -83,13 +84,13 @@ export class AccountStore {
 
   require(id: string): AccountRecord {
     const account = this.get(id);
-    if (!account) throw new Error(`Hesap bulunamadı: ${id}`);
+    if (!account) throw notFound(`Hesap bulunamadı: ${id}`);
     return account;
   }
 
   create(accountName: string): AccountRecord {
     const id = accountIdOf(accountName);
-    if (this.accounts.has(id)) throw new Error(`Hesap zaten var: ${accountName}`);
+    if (this.accounts.has(id)) throw conflict(`Hesap zaten var: ${accountName}`);
     const account = accountSchema.parse({ id, accountName: accountName.trim(), createdAt: new Date().toISOString() });
     this.accounts.set(id, account);
     this.save();

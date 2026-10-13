@@ -1,7 +1,8 @@
 import { EventEmitter } from 'node:events';
+import { notFound } from '../errors.js';
 import { logger } from '../logger.js';
 import { accountIdOf, type AccountPatch, type AccountRecord, type AccountStore } from '../store/account-store.js';
-import { AccountSession, steamDataDirOf, type ClientFactory, type SessionSnapshot } from './account-session.js';
+import { AccountSession, steamDataDirOf, type ClientFactory, type OwnedGame, type SessionSnapshot } from './account-session.js';
 
 /** Hesap kaydı + canlı oturum durumu (token hariç). */
 export type AccountStatus = Omit<AccountRecord, 'refreshToken'> & {
@@ -17,11 +18,15 @@ type ManagerEvents = {
 
 const log = logger.scoped('core');
 
+/** Şifreli giriş isteğinin en fazla bekleyeceği süre */
+const LOGIN_WAIT_MS = 30_000;
+
 /** Tüm hesap oturumlarını yönetir. API ve CLI bu sınıf üzerinden çalışır. */
 export class AccountManager extends EventEmitter<ManagerEvents> {
   private sessions = new Map<string, AccountSession>();
   /** startAll çağrıldıysa true; etkinleştirilen hesaplar yalnızca bu durumda hemen başlar. */
   private running = false;
+  private pendingLogins = new Map<string, Promise<void>>();
   private readonly steamDataDir: string;
 
   constructor(
@@ -43,7 +48,7 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
 
   private session(id: string): AccountSession {
     const session = this.sessions.get(accountIdOf(id));
-    if (!session) throw new Error(`Hesap bulunamadı: ${id}`);
+    if (!session) throw notFound(`Hesap bulunamadı: ${id}`);
     return session;
   }
 
@@ -58,6 +63,12 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
     if (!account || !session) return undefined;
     const { refreshToken, ...rest } = account;
     return { ...rest, hasToken: refreshToken !== null, session: session.snapshot() };
+  }
+
+  require(id: string): AccountStatus {
+    const status = this.status(id);
+    if (!status) throw notFound(`Hesap bulunamadı: ${id}`);
+    return status;
   }
 
   list(): AccountStatus[] {
@@ -77,32 +88,69 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
     for (const session of this.sessions.values()) session.stop();
   }
 
-  /**
-   * Yeni hesap ekler ve şifre ile giriş yapar. Steam Guard gerekirse oturum 'awaiting_guard'
-   * durumuna geçer; kod submitGuardCode ile verilir. Giriş başarısız olursa hesap silinir.
+  /*
+   * Şifreli giriş akışı (addAccount / relogin / submitGuardCode) aynı şekilde döner:
+   * giriş tamamlanınca, Steam Guard kodu istenince ya da zaman aşımında güncel durumla
+   * çözülür; giriş başarısız olursa hata fırlatır. Böylece API isteği Guard beklerken asılı kalmaz.
+   * Durum 'awaiting_guard' ise submitGuardCode ile devam edilir (mobil onayda waitForLogin).
    */
-  async addAccount(accountName: string, password: string): Promise<AccountStatus> {
+
+  /** Yeni hesap ekler ve şifre ile giriş yapar. Giriş başarısız olursa hesap silinir. */
+  addAccount(accountName: string, password: string): Promise<AccountStatus> {
     const account = this.store.create(accountName);
     const session = this.createSession(account.id);
     this.emitAccount(account.id);
     log.info(`Hesap ekleniyor: ${account.accountName}`);
-    try {
-      await session.loginWithPassword(password);
-    } catch (err) {
-      this.removeAccount(account.id);
-      throw err;
-    }
-    return this.status(account.id)!;
+    return this.beginLogin(account.id, () =>
+      session.loginWithPassword(password).catch((err) => {
+        this.removeAccount(account.id);
+        throw err;
+      }),
+    );
   }
 
   /** Token'ı geçersizleşmiş hesap için şifre ile tekrar giriş. */
-  async relogin(id: string, password: string): Promise<AccountStatus> {
-    await this.session(id).loginWithPassword(password);
-    return this.status(id)!;
+  relogin(id: string, password: string): Promise<AccountStatus> {
+    const session = this.session(id);
+    return this.beginLogin(session.accountId, () => session.loginWithPassword(password));
   }
 
-  submitGuardCode(id: string, code: string) {
+  submitGuardCode(id: string, code: string): Promise<AccountStatus> {
     this.session(id).submitGuardCode(code);
+    return this.waitForLogin(id);
+  }
+
+  /** Devam eden şifreli girişi bekler (ör. mobil uygulamadan onay verildiyse). */
+  waitForLogin(id: string, timeoutMs = LOGIN_WAIT_MS): Promise<AccountStatus> {
+    const accountId = accountIdOf(id);
+    const pending = this.pendingLogins.get(accountId);
+    if (!pending) return Promise.resolve(this.status(accountId)!);
+    const session = this.session(accountId);
+
+    return new Promise<AccountStatus>((resolve, reject) => {
+      const finish = (err?: unknown) => {
+        clearTimeout(timer);
+        session.off('change', onChange);
+        if (err) reject(err);
+        else resolve(this.status(accountId)!);
+      };
+      const onChange = (snapshot: SessionSnapshot) => {
+        if (snapshot.state === 'awaiting_guard') finish();
+      };
+      const timer = setTimeout(() => finish(), timeoutMs);
+      session.on('change', onChange);
+      pending.then(() => finish(), finish);
+    });
+  }
+
+  private beginLogin(id: string, run: () => Promise<void>): Promise<AccountStatus> {
+    const pending = run();
+    this.pendingLogins.set(id, pending);
+    const cleanup = () => {
+      if (this.pendingLogins.get(id) === pending) this.pendingLogins.delete(id);
+    };
+    pending.then(cleanup, cleanup);
+    return this.waitForLogin(id);
   }
 
   updateAccount(id: string, patch: AccountPatch): AccountStatus {
@@ -119,6 +167,10 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
     }
     this.emitAccount(id);
     return this.status(id)!;
+  }
+
+  getOwnedGames(id: string, force = false): Promise<OwnedGame[]> {
+    return this.session(id).getOwnedGames(force);
   }
 
   removeAccount(id: string) {

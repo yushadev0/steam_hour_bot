@@ -1,38 +1,13 @@
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import SteamUser from 'steam-user';
-import { logger } from '../src/logger.js';
 import { AccountManager } from '../src/steam/account-manager.js';
 import { AccountStore } from '../src/store/account-store.js';
 import { Vault } from '../src/store/vault.js';
-
-logger.minLevel = 'error';
-logger.log = () => {};
-
-/** steam-user'ın kullandığımız kısmını taklit eden sahte istemci. */
-class FakeClient extends EventEmitter {
-  logOnCalls: unknown[] = [];
-  played: number[][] = [];
-  personas: number[] = [];
-  steamID = { getSteamID64: () => '76561190000000000' };
-  logOn(details: unknown) {
-    this.logOnCalls.push(details);
-  }
-  gamesPlayed(apps: number[]) {
-    this.played.push(apps);
-  }
-  setPersona(state: number) {
-    this.personas.push(state);
-  }
-  logOff() {}
-  fail(eresult: number) {
-    this.emit('error', Object.assign(new Error(SteamUser.EResult[eresult]), { eresult }));
-  }
-}
+import { FakeClient, fakeClientFactory } from './helpers.js';
 
 let clients: FakeClient[];
 let store: AccountStore;
@@ -43,11 +18,7 @@ const stateOf = (id: string) => manager.status(id)!.session.state;
 let dataDir: string;
 
 function createManager() {
-  return new AccountManager(store, dataDir, () => {
-    const client = new FakeClient();
-    clients.push(client);
-    return client as unknown as SteamUser;
-  });
+  return new AccountManager(store, dataDir, fakeClientFactory(clients));
 }
 
 function setup() {
@@ -76,26 +47,46 @@ describe('AccountSession', () => {
     mock.timers.reset();
   });
 
-  it('hesap eklerken Steam Guard kodunu bekler, giriş sonrası token kaydeder', async () => {
+  it('hesap eklerken Steam Guard istenince döner, kodla giriş tamamlanır ve token kaydedilir', async () => {
     const adding = manager.addAccount('User', 'pw');
     const client = lastClient();
     assert.deepEqual(client.logOnCalls[0], { accountName: 'User', password: 'pw' });
 
     let submitted: string | undefined;
     client.emit('steamGuard', null, (code: string) => (submitted = code), false);
-    assert.equal(stateOf('user'), 'awaiting_guard');
-    assert.equal(manager.status('user')!.session.guard?.type, 'mobile');
+    const pending = await adding;
+    assert.equal(pending.session.state, 'awaiting_guard');
+    assert.equal(pending.session.guard?.type, 'mobile');
 
-    manager.submitGuardCode('user', ' ABC12 ');
+    const guarded = manager.submitGuardCode('user', ' ABC12 ');
     assert.equal(submitted, 'ABC12');
 
     client.emit('refreshToken', 'new-token');
     client.emit('loggedOn');
-    const status = await adding;
+    const status = await guarded;
     assert.equal(status.session.state, 'running');
     assert.equal(status.hasToken, true);
     assert.equal(store.getToken('user'), 'new-token');
     assert.equal(status.steamId, '76561190000000000');
+  });
+
+  it('hatalı Guard kodunda tekrar kod ister', async () => {
+    const adding = manager.addAccount('User', 'pw');
+    const client = lastClient();
+    client.emit('steamGuard', 'gmail.com', () => {}, false);
+    assert.equal((await adding).session.guard?.type, 'email');
+
+    const retry = manager.submitGuardCode('user', 'WRONG');
+    client.emit('steamGuard', 'gmail.com', () => {}, true);
+    const status = await retry;
+    assert.equal(status.session.state, 'awaiting_guard');
+    assert.equal(status.session.guard?.lastCodeWrong, true);
+  });
+
+  it('Guard beklenmiyorken kod gönderilirse 409 döner', () => {
+    startWithToken();
+    lastClient().emit('loggedOn');
+    assert.throws(() => manager.submitGuardCode('user', '12345'), { status: 409 });
   });
 
   it('başarısız eklemede hesabı siler', async () => {

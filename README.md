@@ -2,7 +2,7 @@
 
 Headless Steam hour booster for Windows and Linux. Signs in to your Steam account and shows the games you pick (by AppID) as "in-game" so playtime accumulates — no game install required.
 
-> **Status:** early development — core engine and CLI are ready (Phase 1). See [PLAN.md](PLAN.md) for the roadmap.
+> **Status:** early development — core engine, CLI and REST/WebSocket API are ready (Phase 2). Web panel is next. See [PLAN.md](PLAN.md).
 
 ## Planned features
 
@@ -13,21 +13,43 @@ Headless Steam hour booster for Windows and Linux. Signs in to your Steam accoun
 - Card farming mode
 - Docker image and standalone Windows `.exe`
 
-## Usage (CLI)
+## Usage
 
 Requires Node.js 22+ (or use the standalone binary).
 
 ```bash
 npm install
+npm start          # bot + API on http://127.0.0.1:8090
+```
+
+On first start a random panel password is printed once in the log (set `SHB_ADMIN_PASSWORD` to choose your own). See [docs/API.md](docs/API.md) for the REST/WebSocket API.
+
+### CLI
+
+Account management also works from the command line while the server is stopped:
+
+```bash
 npm run cli -- add <username>          # sign in (password + Steam Guard asked once)
 npm run cli -- games <username> 730 440
 npm run cli -- persona <username> invisible
 npm run cli -- list
-npm start                              # run all enabled accounts
 npm run smoke                          # anonymous Steam connection test
 ```
 
-Data is stored in `data/` (override with `SHB_DATA_DIR`). Refresh tokens are encrypted with AES-256-GCM using `SHB_SECRET`, or an auto-generated `data/secret.key`. Passwords are never stored.
+The standalone binary takes the same commands (`steam-hour-bot add <username>`). Run it without arguments to start the server.
+
+### Configuration
+
+| Variable | Default | |
+|---|---|---|
+| `SHB_DATA_DIR` | `./data` | Accounts, encrypted tokens, panel auth |
+| `SHB_HOST` | `127.0.0.1` | Use `0.0.0.0` to expose (e.g. Docker) |
+| `SHB_PORT` | `8090` | |
+| `SHB_ADMIN_PASSWORD` | random | Panel password |
+| `SHB_SECRET` | `data/secret.key` | Token encryption key |
+| `SHB_TRUST_PROXY` | `false` | Set `true` behind a reverse proxy |
+
+Refresh tokens are encrypted with AES-256-GCM. Passwords are never stored.
 
 The bot backs off automatically when you start a game on the same account elsewhere, and resumes when you're done.
 

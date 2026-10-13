@@ -1,6 +1,7 @@
 import { join, resolve } from 'node:path';
 
 export const APP_NAME = "yusha's Steam Hour Bot";
+export const VERSION = '0.2.0';
 
 /** Steam aynı anda en fazla bu kadar oyunu "oynuyor" gösterebilir. */
 export const MAX_GAMES = 32;
@@ -10,6 +11,11 @@ export interface Config {
   dataDir: string;
   /** Token şifreleme anahtarı. Verilmezse dataDir/secret.key otomatik üretilir. */
   secret: string | undefined;
+  /** Panel/API adresi. Varsayılan yalnızca bu bilgisayar; Docker'da 0.0.0.0 */
+  host: string;
+  port: number;
+  /** Verilirse panel şifresi bu olur; verilmezse ilk açılışta rastgele üretilir. */
+  adminPassword: string | undefined;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -17,5 +23,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     // INIT_CWD: npm script'i workspace klasöründe çalıştırsa da komutun verildiği klasör
     dataDir: resolve(env.SHB_DATA_DIR ?? join(env.INIT_CWD ?? process.cwd(), 'data')),
     secret: env.SHB_SECRET || undefined,
+    host: env.SHB_HOST || '127.0.0.1',
+    port: Number(env.SHB_PORT) || 8090,
+    adminPassword: env.SHB_ADMIN_PASSWORD || undefined,
   };
 }

@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { join } from 'node:path';
 import SteamUser from 'steam-user';
+import { badRequest, conflict } from '../errors.js';
 import { logger, type ScopedLogger } from '../logger.js';
 import type { AccountRecord, AccountStore } from '../store/account-store.js';
 
@@ -39,6 +40,14 @@ export interface SessionSnapshot {
   blockedByApp: number | null;
 }
 
+export interface OwnedGame {
+  appId: number;
+  name: string;
+  /** Dakika cinsinden toplam oynama süresi */
+  playtimeMinutes: number;
+  iconUrl: string | null;
+}
+
 export type ClientFactory = (options: ConstructorParameters<typeof SteamUser>[0]) => SteamUser;
 
 type SessionEvents = {
@@ -66,6 +75,7 @@ const ELSEWHERE_RETRY_MS = 60_000;
 const RATE_LIMIT_RETRY_MS = 30 * 60_000;
 /** Girişten sonra playingState bilgisinin gelmesi için beklenen süre. */
 const PLAYING_STATE_GRACE_MS = 3_000;
+const OWNED_GAMES_CACHE_MS = 10 * 60_000;
 
 /**
  * Tek bir Steam hesabının oturumu. steam-user istemcisini sarar; giriş, Steam Guard,
@@ -88,6 +98,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
   private retryTimer: NodeJS.Timeout | null = null;
   private applyTimer: NodeJS.Timeout | null = null;
   private retryDelay = RETRY_BASE_MS;
+  private ownedGamesCache: { at: number; games: OwnedGame[] } | null = null;
 
   constructor(
     readonly accountId: string,
@@ -151,7 +162,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
   }
 
   submitGuardCode(code: string) {
-    if (!this.guardCallback) throw new Error('Şu an Steam Guard kodu beklenmiyor');
+    if (!this.guardCallback) throw conflict('Şu an Steam Guard kodu beklenmiyor');
     const callback = this.guardCallback;
     this.guardCallback = null;
     this.log.info('Steam Guard kodu gönderildi.');
@@ -164,6 +175,27 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     if (!this.loggedOn) return;
     this.applyPersona();
     this.applyGames();
+  }
+
+  /** Hesabın sahip olduğu oyunlar (oynama süresiyle). Oturum açık olmalı; 10 dk önbelleklenir. */
+  async getOwnedGames(force = false): Promise<OwnedGame[]> {
+    if (!force && this.ownedGamesCache && Date.now() - this.ownedGamesCache.at < OWNED_GAMES_CACHE_MS) {
+      return this.ownedGamesCache.games;
+    }
+    if (!this.client || !this.loggedOn || !this.client.steamID) throw conflict("Hesap şu an Steam'e bağlı değil");
+    const { apps } = await this.client.getUserOwnedApps(this.client.steamID, { includePlayedFreeGames: true });
+    const games = apps
+      .map((app) => ({
+        appId: app.appid,
+        name: app.name,
+        playtimeMinutes: app.playtime_forever,
+        iconUrl: app.img_icon_url
+          ? `https://media.steampowered.com/steamcommunity/public/images/apps/${app.appid}/${app.img_icon_url}.jpg`
+          : null,
+      }))
+      .sort((a, b) => b.playtimeMinutes - a.playtimeMinutes);
+    this.ownedGamesCache = { at: Date.now(), games };
+    return games;
   }
 
   stop() {
@@ -266,7 +298,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       // Şifre ile yapılan denemede kayıtlı token'a dokunma; token girişi reddedildiyse token geçersizdir.
       if (!this.passwordLogin) this.store.setToken(this.accountId, null);
       this.setState('needs_login', { lastError: reason });
-      this.finishPasswordLogin(err);
+      this.finishPasswordLogin(badRequest(`Steam girişi reddedildi: ${reason}`));
       return;
     }
 
@@ -274,7 +306,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     if (this.passwordLogin) {
       this.log.error(`Giriş başarısız: ${reason}`);
       this.setState('needs_login', { lastError: reason });
-      this.finishPasswordLogin(err);
+      this.finishPasswordLogin(badRequest(`Steam girişi başarısız: ${reason}`));
       return;
     }
 
