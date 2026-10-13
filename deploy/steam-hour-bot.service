@@ -1,0 +1,22 @@
+# Docker kullanmadan çalıştırmak için systemd kullanıcı servisi.
+#
+#   mkdir -p ~/steam-hour-bot && cp steam-hour-bot-linux ~/steam-hour-bot/steam-hour-bot
+#   cp steam-hour-bot.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now steam-hour-bot
+#   loginctl enable-linger $USER     # oturum kapalıyken de çalışsın
+#   journalctl --user -u steam-hour-bot -f
+
+[Unit]
+Description=yusha's Steam Hour Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=%h/steam-hour-bot
+ExecStart=%h/steam-hour-bot/steam-hour-bot serve
+Environment=SHB_DATA_DIR=%h/steam-hour-bot/data
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

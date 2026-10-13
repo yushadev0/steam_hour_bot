@@ -2,7 +2,7 @@
 
 Headless Steam hour booster for Windows and Linux. Signs in to your Steam account and shows the games you pick (by AppID) as "in-game" so playtime accumulates — no game install required.
 
-> **Status:** web panel, API, core engine and card farming are ready (Phase 4). Docker is next. See [PLAN.md](PLAN.md).
+> **Status:** usable — web panel, API, card farming, Docker and standalone binaries are ready. See [PLAN.md](PLAN.md).
 
 ## Planned features
 
@@ -51,6 +51,28 @@ The standalone binary takes the same commands (`steam-hour-bot add <username>`).
 Refresh tokens are encrypted with AES-256-GCM. Passwords are never stored.
 
 The bot backs off automatically when you start a game on the same account elsewhere, and resumes when you're done.
+
+## Running on a Linux server (Docker)
+
+```bash
+git clone https://github.com/yushadev0/steam_hour_bot && cd steam_hour_bot
+mkdir -p data
+printf 'SHB_UID=%s
+SHB_GID=%s
+' "$(id -u)" "$(id -g)" > .env   # data/ stays owned by you
+docker compose up -d --build
+docker compose logs -f
+```
+
+The container uses host networking so the bot listens on the server's own `127.0.0.1:8090`; no port is exposed to the internet. Open the panel through an SSH tunnel from your computer:
+
+```bash
+ssh -L 8090:127.0.0.1:8090 user@server   # then browse http://127.0.0.1:8090
+```
+
+To update: `git pull && docker compose up -d --build`. From a development machine, `npm run deploy` does the same over SSH (set `DEPLOY_TARGET=user@server` and optionally `DEPLOY_KEY` in a local `.env`).
+
+Without Docker, use the Linux binary with the systemd user service in [deploy/steam-hour-bot.service](deploy/steam-hour-bot.service).
 
 ## Building a standalone binary
 

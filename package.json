@@ -15,7 +15,8 @@
     "build:web": "npm run build -w apps/web",
     "build:exe": "npm run build:web && npm run build:exe -w apps/server",
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "deploy": "node --env-file-if-exists=.env deploy/deploy.mjs"
   },
   "overrides": {
     "adm-zip": "^0.6.1",

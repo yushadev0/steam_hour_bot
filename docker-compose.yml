@@ -1,0 +1,16 @@
+services:
+  steam-hour-bot:
+    build: .
+    image: steam-hour-bot:local
+    container_name: steam-hour-bot
+    # Panel yalnızca 127.0.0.1'den gelen istekleri kabul eder. Host ağında bot, sunucunun
+    # kendi 127.0.0.1:8090 adresinde dinler; dışarıya hiçbir port açılmaz.
+    network_mode: host
+    restart: unless-stopped
+    # data/ klasörü sunucudaki kullanıcıya ait kalsın; deploy betiği .env içine id -u / id -g yazar
+    user: "${SHB_UID:-1000}:${SHB_GID:-1000}"
+    environment:
+      SHB_PORT: "8090"
+    volumes:
+      - ./data:/data
+    stop_grace_period: 15s

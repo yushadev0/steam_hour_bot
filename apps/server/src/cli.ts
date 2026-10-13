@@ -3,7 +3,7 @@
  * diğer komutlar sunucuya gerek kalmadan hesapları yönetir.
  */
 import { createInterface } from 'node:readline';
-import { APP_NAME, VERSION } from './config.js';
+import { APP_NAME, loadConfig, VERSION } from './config.js';
 import { createCore } from './core.js';
 import { runningServerPid } from './lock.js';
 import { logger } from './logger.js';
@@ -26,6 +26,7 @@ Kullanım: steam-hour-bot [komut] [argümanlar]
   enable <kullanıcı> / disable <kullanıcı>
   remove <kullanıcı>               Hesabı ve kayıtlı token'ı siler
   smoke                            Steam bağlantı testi (anonim giriş, hesap gerekmez)
+  health                           Çalışan sunucu yanıt veriyor mu (Docker sağlık kontrolü)
 
 Ortam değişkenleri: SHB_DATA_DIR, SHB_PORT (8090), SHB_SECRET, SHB_NO_BROWSER
 `;
@@ -101,6 +102,12 @@ async function main() {
 
   if (command === 'help' || command === '--help' || command === '-h') {
     console.log(USAGE);
+    return;
+  }
+  if (command === 'health') {
+    const res = await fetch(`http://127.0.0.1:${loadConfig().port}/api/health`).catch(() => null);
+    if (!res?.ok) throw new Error('Sunucu yanıt vermiyor');
+    console.log('✓ çalışıyor');
     return;
   }
   if (command === 'smoke') {
