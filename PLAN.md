@@ -51,6 +51,10 @@ steam_hour_bot/
 6. **Sınır:** aynı anda en fazla 32 oyun.
 7. Oyunlar **AppID** ile seçilir (ör. CS2 = 730); panelde hesaptaki oyunlar isim/ikonla listelenir.
 
+## Sürüm
+
+v1.0.0 yayınlandı: Windows ve Linux binary'leri GitHub Releases'ta.
+
 ## Fazlar
 
 | Faz | İçerik | Durum |

@@ -7,6 +7,7 @@
 import type { BunPlugin } from 'bun';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { APP_NAME, VERSION } from '../src/config.js';
 
 /**
  * steam-user lzma'yı `requireWithFallback('lzma-native', 'lzma')` ile dinamik yüklüyor; lzma paketi
@@ -88,7 +89,19 @@ const outfile = `dist/steam-hour-bot${target.includes('windows') ? '.exe' : targ
 
 const result = await Bun.build({
   entrypoints: ['src/cli.ts'],
-  compile: { target, outfile },
+  compile: {
+    target,
+    outfile,
+    // Windows dosya özellikleri ve simgesi (yalnızca Windows hedefinde; diğerlerinde hata verir)
+    windows: !target.includes('windows') ? undefined : {
+      icon: join(import.meta.dir, '../assets/icon.ico'),
+      title: APP_NAME,
+      publisher: 'yusha',
+      version: `${VERSION}.0`,
+      description: `${APP_NAME} — headless Steam hour booster`,
+      copyright: `© ${new Date().getFullYear()} yusha`,
+    },
+  },
   plugins: [stubLzma, inlineSteamPem, embedWeb],
   minify: true,
 });

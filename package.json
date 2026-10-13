@@ -23,5 +23,6 @@
     "steam-appticket": {
       "protobufjs": "^7.6.6"
     }
-  }
+  },
+  "version": "1.0.0"
 }
