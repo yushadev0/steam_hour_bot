@@ -7,6 +7,7 @@ import { logger } from '../src/logger.js';
 import { AccountManager } from '../src/steam/account-manager.js';
 import { BadgeSessionError, fetchCardDrops, parseBadgesPage, type BadgeGame } from '../src/steam/badges.js';
 import { CardFarmer, CHECK_INTERVAL_MS, ERROR_RETRY_MS, NEW_ITEMS_DELAY_MS } from '../src/steam/card-farmer.js';
+import type { BotEvent } from '../src/steam/events.js';
 import { AccountStore } from '../src/store/account-store.js';
 import { Vault } from '../src/store/vault.js';
 import { FakeClient, fakeClientFactory } from './helpers.js';
@@ -249,3 +250,45 @@ describe('Kart modu (oturumla)', () => {
   });
 });
 
+
+describe('Kart olayları', () => {
+  it('kart düşünce card_dropped, kartlar bitince cards_finished yayınlar', async () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const dataDir = mkdtempSync(join(tmpdir(), 'shb-card-events-'));
+    const clients: FakeClient[] = [];
+    let drops: BadgeGame[] = [game(440, 2), game(730, 3)];
+    const store = new AccountStore(dataDir, new Vault('k'));
+    store.create('user');
+    store.update('user', { mode: 'cards' });
+    store.setToken('user', 'tok');
+    const manager = new AccountManager(store, dataDir, fakeClientFactory(clients), async () => drops);
+    const events: BotEvent[] = [];
+    manager.on('event', (e) => events.push(e));
+    manager.startAll();
+    try {
+      clients[0]!.emit('loggedOn');
+      await flush();
+
+      drops = [game(440, 1), game(730, 3)];
+      manager.checkCards('user');
+      await flush();
+      const dropped = events.find((e) => e.type === 'card_dropped');
+      assert.ok(dropped && dropped.type === 'card_dropped');
+      assert.equal(dropped.appId, 440);
+      assert.equal(dropped.dropped, 1);
+      assert.equal(dropped.remaining, 1);
+      assert.equal(dropped.totalRemaining, 4);
+
+      drops = [];
+      manager.checkCards('user');
+      await flush();
+      assert.deepEqual(
+        events.map((e) => e.type),
+        ['card_dropped', 'card_dropped', 'cards_finished'],
+      );
+    } finally {
+      manager.stopAll();
+      mock.timers.reset();
+    }
+  });
+});

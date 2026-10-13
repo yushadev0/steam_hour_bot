@@ -7,6 +7,7 @@ import type { AppNameCache } from '../store/app-names.js';
 import type { AccountRecord, AccountStore } from '../store/account-store.js';
 import { BadgeSessionError, fetchCardDrops, type BadgeGame } from './badges.js';
 import { CardFarmer, type CardFarmSnapshot } from './card-farmer.js';
+import { CONNECTION_PROBLEM_AFTER_MS, type AccountEvent } from './events.js';
 
 const { EResult, EPersonaState } = SteamUser;
 
@@ -71,6 +72,8 @@ type SessionEvents = {
   change: [SessionSnapshot];
   /** Şifreyle giriş denemesinin sonucu (addAccount / relogin bekler) */
   loginResult: [error: Error | null];
+  /** Bildirilmeye değer olay (push bildirimleri) */
+  event: [AccountEvent];
 };
 
 /** Bu hatalar token/şifrenin geçersiz olduğunu gösterir; tekrar denemek anlamsız. */
@@ -122,6 +125,10 @@ export class AccountSession extends EventEmitter<SessionEvents> {
   private farmer: CardFarmer | null = null;
   /** steamcommunity.com çerezleri (rozet sayfasını okumak için) */
   private webCookies: string[] | null = null;
+  /** Bağlantı sorunu ne zamandan beri sürüyor; uzarsa connection_problem yayınlanır */
+  private troubleSince: Date | null = null;
+  private troubleTimer: NodeJS.Timeout | null = null;
+  private troubleReported = false;
   private webSessionWaiters: { resolve: (cookies: string[]) => void; reject: (err: Error) => void }[] = [];
 
   constructor(
@@ -161,7 +168,35 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     if (state !== 'blocked') this.blockedByApp = null;
     if ('lastError' in patch) this.lastError = patch.lastError ?? null;
     if ('guard' in patch) this.guard = patch.guard ?? null;
+    this.trackConnection(state);
     this.emit('change', this.snapshot());
+  }
+
+  /**
+   * Hesap uzun süre bağlanamazsa (Steam bakımı, ağ sorunu) bir kez connection_problem,
+   * sonra bağlantı kurulunca connection_restored yayınlar.
+   */
+  private trackConnection(state: SessionState) {
+    if (state === 'connecting' || state === 'waiting_retry') {
+      if (this.troubleSince) return;
+      this.troubleSince = new Date();
+      this.troubleTimer = setTimeout(() => {
+        this.troubleTimer = null;
+        this.troubleReported = true;
+        this.log.warn('Uzun süredir Steam\'e bağlanılamıyor.');
+        this.emit('event', { type: 'connection_problem', reason: this.lastError, since: this.troubleSince!.toISOString() });
+      }, CONNECTION_PROBLEM_AFTER_MS);
+      return;
+    }
+    if (state === 'running' && this.troubleReported) this.emit('event', { type: 'connection_restored' });
+    this.clearTrouble();
+  }
+
+  private clearTrouble() {
+    if (this.troubleTimer) clearTimeout(this.troubleTimer);
+    this.troubleTimer = null;
+    this.troubleSince = null;
+    this.troubleReported = false;
   }
 
   /** Kayıtlı token ile oturumu başlatır. Token yoksa 'needs_login' durumuna geçer. */
@@ -301,6 +336,11 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       if (blocked) {
         this.log.info(`Hesapla başka bir yerde oynanıyor (${this.deps.appNames.label(playingApp)}), bekleniyor.`);
         this.setState('blocked');
+        this.emit('event', {
+          type: 'playing_elsewhere',
+          appId: playingApp || null,
+          game: playingApp ? (this.deps.appNames.get(playingApp) ?? null) : null,
+        });
         this.blockedByApp = playingApp || null;
         this.emit('change', this.snapshot());
       } else {
@@ -338,12 +378,16 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     if (want && !this.farmer) {
       const farmer = new CardFarmer(() => this.loadCardDrops(), this.log);
       farmer.on('change', () => this.emit('change', this.snapshot()));
+      farmer.on('dropped', ({ game, dropped, remaining, totalRemaining }) =>
+        this.emit('event', { type: 'card_dropped', appId: game.appId, game: game.name, dropped, remaining, totalRemaining }),
+      );
       // Giriş sonrası bekleme sürüyorsa oyunlar o bitince uygulanır
       farmer.on('games', () => {
         if (!this.applyTimer) this.applyGames();
       });
       farmer.on('finished', () => {
         this.log.info('Tüm kartlar düştü; normal oyun listesine dönülüyor.');
+        this.emit('event', { type: 'cards_finished' });
         this.store.update(this.accountId, { mode: 'games' });
         this.syncFarmer();
         this.applyGames();
@@ -409,6 +453,8 @@ export class AccountSession extends EventEmitter<SessionEvents> {
       // Şifre ile yapılan denemede kayıtlı token'a dokunma; token girişi reddedildiyse token geçersizdir.
       if (!this.passwordLogin) this.store.setToken(this.accountId, null);
       this.setState('needs_login', { lastError: reason });
+      // Şifreyle giriş kullanıcının kendi işlemi; yalnızca kendiliğinden düşen oturum bildirilir
+      if (!this.passwordLogin) this.emit('event', { type: 'login_required', reason });
       this.finishPasswordLogin(badRequest(`Steam girişi reddedildi: ${reason}`));
       return;
     }
@@ -441,6 +487,7 @@ export class AccountSession extends EventEmitter<SessionEvents> {
     this.runningSince = null;
     this.lastError = reason;
     this.state = 'waiting_retry';
+    this.trackConnection('waiting_retry');
     this.emit('change', this.snapshot());
     this.log.info(`${Math.round(delay / 1000)} sn sonra tekrar denenecek.`);
     this.retryTimer = setTimeout(() => {

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import SteamUser from 'steam-user';
 import { AccountManager } from '../src/steam/account-manager.js';
+import type { BotEvent } from '../src/steam/events.js';
 import { AccountStore } from '../src/store/account-store.js';
 import { Vault } from '../src/store/vault.js';
 import { FakeClient, fakeClientFactory } from './helpers.js';
@@ -171,5 +172,84 @@ describe('AccountSession', () => {
     manager.updateAccount('user', { enabled: false });
     assert.deepEqual(client.played.at(-1), []);
     assert.equal(stateOf('user'), 'stopped');
+  });
+});
+
+describe('Bildirim olayları', () => {
+  let events: BotEvent[];
+
+  beforeEach(() => {
+    setup();
+    mock.timers.enable({ apis: ['setTimeout'] });
+  });
+  afterEach(() => {
+    manager.stopAll();
+    mock.timers.reset();
+  });
+
+  /** startWithToken manager'ı yeniden kurar; olayları ondan sonra dinle */
+  function listen() {
+    events = [];
+    manager.on('event', (e) => events.push(e));
+  }
+
+  it('kayıtlı oturum reddedilince login_required yayınlar', () => {
+    startWithToken();
+    listen();
+    lastClient().fail(SteamUser.EResult.AccessDenied);
+    assert.equal(events.length, 1);
+    assert.equal(events[0]!.type, 'login_required');
+    assert.equal(events[0]!.accountId, 'user');
+    assert.equal(events[0]!.accountName, 'user');
+  });
+
+  it('şifreyle girişteki hatayı bildirmez (kullanıcının kendi işlemi)', async () => {
+    listen();
+    const adding = manager.addAccount('User', 'wrong');
+    lastClient().fail(SteamUser.EResult.InvalidPassword);
+    await assert.rejects(adding);
+    assert.deepEqual(events, []);
+  });
+
+  it('başka yerde oyuna girilince playing_elsewhere yayınlar', () => {
+    startWithToken();
+    listen();
+    lastClient().emit('loggedOn');
+    lastClient().emit('playingState', true, 570);
+    assert.equal(events.length, 1);
+    assert.deepEqual({ ...events[0], time: undefined }, {
+      type: 'playing_elsewhere',
+      appId: 570,
+      game: null,
+      accountId: 'user',
+      accountName: 'user',
+      time: undefined,
+    });
+  });
+
+  it('30 dk bağlanamazsa connection_problem, bağlanınca connection_restored yayınlar', () => {
+    startWithToken();
+    listen();
+    lastClient().fail(SteamUser.EResult.ServiceUnavailable);
+    mock.timers.tick(29 * 60_000);
+    assert.equal(events.filter((e) => e.type === 'connection_problem').length, 0);
+    mock.timers.tick(60_000);
+    const problem = events.find((e) => e.type === 'connection_problem');
+    assert.ok(problem, 'connection_problem bekleniyordu');
+    assert.match(problem.type === 'connection_problem' ? (problem.reason ?? '') : '', /ServiceUnavailable/);
+
+    lastClient().emit('loggedOn');
+    assert.equal(events.at(-1)!.type, 'connection_restored');
+  });
+
+  it('kısa kopmalarda bildirim göndermez', () => {
+    startWithToken();
+    listen();
+    lastClient().emit('loggedOn');
+    lastClient().emit('disconnected', 0, 'NoConnection');
+    mock.timers.tick(5 * 60_000);
+    lastClient().emit('loggedOn');
+    mock.timers.tick(60 * 60_000);
+    assert.deepEqual(events.map((e) => e.type), []);
   });
 });

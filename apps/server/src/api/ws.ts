@@ -3,13 +3,15 @@ import type { WebSocket } from 'ws';
 import type { Core } from '../core.js';
 import { logger, type LogEntry } from '../logger.js';
 import type { AccountStatus } from '../steam/account-manager.js';
+import type { BotEvent } from '../steam/events.js';
 
 /** Sunucudan istemciye giden WebSocket mesajları */
 export type ServerMessage =
   | { type: 'snapshot'; accounts: AccountStatus[]; logs: LogEntry[] }
   | { type: 'account'; account: AccountStatus }
   | { type: 'removed'; id: string }
-  | { type: 'log'; entry: LogEntry };
+  | { type: 'log'; entry: LogEntry }
+  | { type: 'event'; event: BotEvent };
 
 const PING_INTERVAL_MS = 30_000;
 const SNAPSHOT_LOG_LIMIT = 200;
@@ -27,10 +29,12 @@ export function registerWebSocket(app: FastifyInstance, { manager }: Core) {
     const onAccount = (account: AccountStatus) => send({ type: 'account', account });
     const onRemoved = (id: string) => send({ type: 'removed', id });
     const onLog = (entry: LogEntry) => send({ type: 'log', entry });
+    const onEvent = (event: BotEvent) => send({ type: 'event', event });
 
     manager.on('account', onAccount);
     manager.on('removed', onRemoved);
     logger.on('entry', onLog);
+    manager.on('event', onEvent);
 
     let alive = true;
     socket.on('pong', () => (alive = true));
@@ -45,6 +49,7 @@ export function registerWebSocket(app: FastifyInstance, { manager }: Core) {
       manager.off('account', onAccount);
       manager.off('removed', onRemoved);
       logger.off('entry', onLog);
+      manager.off('event', onEvent);
     });
 
     send({ type: 'snapshot', accounts: manager.list(), logs: logger.recent(undefined, SNAPSHOT_LOG_LIMIT) });

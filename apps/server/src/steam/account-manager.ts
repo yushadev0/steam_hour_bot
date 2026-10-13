@@ -3,6 +3,7 @@ import { notFound } from '../errors.js';
 import { logger } from '../logger.js';
 import { accountIdOf, type AccountPatch, type AccountRecord, type AccountStore } from '../store/account-store.js';
 import { AppNameCache } from '../store/app-names.js';
+import type { BotEvent } from './events.js';
 import { AccountSession, steamDataDirOf, type ClientFactory, type OwnedGame, type SessionDeps, type SessionSnapshot } from './account-session.js';
 
 /** Hesap kaydı + canlı oturum durumu (token hariç). */
@@ -17,6 +18,8 @@ type ManagerEvents = {
   /** Bir hesabın kaydı ya da oturum durumu değişti */
   account: [AccountStatus];
   removed: [accountId: string];
+  /** Bildirilmeye değer olay (WebSocket ile yayınlanır) */
+  event: [BotEvent];
 };
 
 const log = logger.scoped('core');
@@ -53,6 +56,16 @@ export class AccountManager extends EventEmitter<ManagerEvents> {
       fetchCardDrops: this.cardDropsFetcher,
     });
     session.on('change', () => this.emitAccount(id));
+    session.on('event', (event) => {
+      const account = this.store.get(id);
+      if (!account) return;
+      this.emit('event', {
+        ...event,
+        accountId: id,
+        accountName: account.personaName ?? account.accountName,
+        time: new Date().toISOString(),
+      });
+    });
     this.sessions.set(id, session);
     return session;
   }

@@ -105,3 +105,17 @@ Token management is only allowed locally. The yassistant module does not need a 
 | `account` | `{ account }` | An account or its session changed |
 | `removed` | `{ id }` | An account was deleted |
 | `log` | `{ entry }` | New log line |
+| `event` | `{ event }` | Something worth notifying about (see below) |
+
+### Events
+
+Every event has `accountId`, `accountName` (Steam display name) and `time`, plus:
+
+| `event.type` | Extra fields | When |
+|---|---|---|
+| `login_required` | `reason` | The stored login was rejected; the bot stopped on that account |
+| `playing_elsewhere` | `appId`, `game` | The account started a game somewhere else; the bot stepped back |
+| `connection_problem` | `reason`, `since` | Could not reach Steam for 30 minutes |
+| `connection_restored` | | Connected again after `connection_problem` |
+| `card_dropped` | `appId`, `game`, `dropped`, `remaining`, `totalRemaining` | Card mode: a card dropped |
+| `cards_finished` | | Card mode: no drops left; the account went back to its game list |

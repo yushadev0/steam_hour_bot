@@ -24,8 +24,18 @@ export interface CardFarmSnapshot {
   error: string | null;
 }
 
+export interface CardDrop {
+  game: BadgeGame;
+  dropped: number;
+  remaining: number;
+  /** Tüm oyunlarda kalan kart sayısı */
+  totalRemaining: number;
+}
+
 type FarmerEvents = {
   change: [CardFarmSnapshot];
+  /** Kasılan oyundan kart düştü */
+  dropped: [CardDrop];
   /** Kasılacak oyun değişti */
   games: [number[]];
   /** Tüm kartlar düştü */
@@ -144,10 +154,14 @@ export class CardFarmer extends EventEmitter<FarmerEvents> {
   private update(drops: BadgeGame[], previous: BadgeGame | null) {
     const sorted = [...drops].sort((a, b) => a.dropsRemaining - b.dropsRemaining || b.playtimeHours - a.playtimeHours);
 
+    let drop: Omit<CardDrop, 'totalRemaining'> | null = null;
     if (previous) {
       const before = previous.dropsRemaining;
       const now = drops.find((g) => g.appId === previous.appId)?.dropsRemaining ?? 0;
-      if (now < before) this.log.info(`${previous.name}: ${before - now} kart düştü, ${now} kaldı.`);
+      if (now < before) {
+        this.log.info(`${previous.name}: ${before - now} kart düştü, ${now} kaldı.`);
+        drop = { game: previous, dropped: before - now, remaining: now };
+      }
     }
 
     // Kasılan oyunun hâlâ kartı varsa ona devam et; gereksiz oyun değiştirme
@@ -155,6 +169,7 @@ export class CardFarmer extends EventEmitter<FarmerEvents> {
     const current = keep ?? sorted[0] ?? null;
     this.queue = sorted.filter((g) => g.appId !== current?.appId);
     this.current = current;
+    if (drop) this.emit('dropped', { ...drop, totalRemaining: this.snapshot().totalDrops });
 
     if (!current) {
       this.status = 'done';
