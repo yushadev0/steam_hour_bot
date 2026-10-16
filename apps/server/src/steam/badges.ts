@@ -23,11 +23,17 @@ const APP_RE = /\/gamecards\/(\d+)\//;
 
 const clean = (text: string) => text.replace(/ |&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 
+/** Sayfayı açan oturumun SteamID'si; giriş yapılmamışsa `g_steamID = false` olur */
+const SESSION_ID_RE = /g_steamID\s*=\s*"(\d+)"/;
+
 /**
  * steamcommunity.com/profiles/<id>/badges/?l=english sayfasını okur. Kalan kart sayısı yalnızca
- * hesabın kendi oturumuyla görünür; sayfa rozet listesi içermiyorsa oturum geçersiz sayılır.
+ * hesabın kendi oturumuyla görünür. Çerezin süresi dolunca (~24 saat) Steam açık profillerde
+ * yönlendirme yapmadan oturumsuz sayfayı döner ve tüm kartlar 0 görünür; bu yüzden sayfanın
+ * bu hesabın oturumuyla açıldığı doğrulanır, değilse oturum geçersiz sayılır.
  */
-export function parseBadgesPage(html: string): { games: BadgeGame[]; pageCount: number } {
+export function parseBadgesPage(html: string, steamId: string): { games: BadgeGame[]; pageCount: number } {
+  if (html.match(SESSION_ID_RE)?.[1] !== steamId) throw new BadgeSessionError();
   const root = parse(html);
   if (!root.querySelector('.badges_sheet')) throw new BadgeSessionError();
 
@@ -68,7 +74,7 @@ export async function fetchCardDrops(steamId: string, cookies: string[], fetchIm
     });
     if (res.url.includes('/login')) throw new BadgeSessionError();
     if (!res.ok) throw new Error(`Rozet sayfası alınamadı (HTTP ${res.status})`);
-    return parseBadgesPage(await res.text());
+    return parseBadgesPage(await res.text(), steamId);
   };
 
   const first = await fetchPage(1);

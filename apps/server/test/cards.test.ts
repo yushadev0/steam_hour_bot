@@ -13,6 +13,8 @@ import { Vault } from '../src/store/vault.js';
 import { FakeClient, fakeClientFactory } from './helpers.js';
 
 const fixture = readFileSync(new URL('./fixtures/badges-page.html', import.meta.url), 'utf8');
+/** Fixture'daki oturumun SteamID'si */
+const STEAM_ID = '76561198000000000';
 
 /** Bekleyen promise'lerin (fetch, then zincirleri) tamamlanmasını sağlar */
 const flush = async () => {
@@ -28,7 +30,7 @@ const game = (appId: number, dropsRemaining: number, playtimeHours = 0): BadgeGa
 
 describe('Rozet sayfası', () => {
   it('oyun rozetlerini, kalan kartları ve oynama süresini okur', () => {
-    const { games, pageCount } = parseBadgesPage(fixture);
+    const { games, pageCount } = parseBadgesPage(fixture, STEAM_ID);
     assert.equal(pageCount, 2);
     assert.deepEqual(games, [
       { appId: 730, name: 'Counter-Strike 2', dropsRemaining: 3, playtimeHours: 1234.5 },
@@ -38,7 +40,16 @@ describe('Rozet sayfası', () => {
   });
 
   it('rozet listesi yoksa oturum geçersiz sayar', () => {
-    assert.throws(() => parseBadgesPage('<html><body>Sign In</body></html>'), BadgeSessionError);
+    assert.throws(() => parseBadgesPage('<html><body>Sign In</body></html>', STEAM_ID), BadgeSessionError);
+  });
+
+  it('çerez süresi dolmuş (oturumsuz) sayfayı oturum hatası sayar', () => {
+    const loggedOut = fixture.replace(`g_steamID = "${STEAM_ID}"`, 'g_steamID = false');
+    assert.throws(() => parseBadgesPage(loggedOut, STEAM_ID), BadgeSessionError);
+  });
+
+  it('başka hesabın oturumuyla açılan sayfayı oturum hatası sayar', () => {
+    assert.throws(() => parseBadgesPage(fixture, '76561198000000001'), BadgeSessionError);
   });
 
   it('tüm sayfaları gezer, yalnızca kartı kalanları döner ve çerez gönderir', async () => {
@@ -49,13 +60,13 @@ describe('Rozet sayfası', () => {
       return new Response(url.endsWith('p=1') ? fixture : page2, { status: 200 });
     }) as unknown as typeof fetch;
 
-    const drops = await fetchCardDrops('7656', ['steamLoginSecure=x'], fakeFetch);
+    const drops = await fetchCardDrops(STEAM_ID, ['steamLoginSecure=x'], fakeFetch);
     assert.deepEqual(
       drops.map((g) => g.appId),
       [730, 1086940, 440, 1086940],
     );
     assert.equal(requested.length, 2);
-    assert.match(requested[0]!.url, /profiles\/7656\/badges\/\?l=english&p=1$/);
+    assert.match(requested[0]!.url, /profiles\/76561198000000000\/badges\/\?l=english&p=1$/);
     assert.equal(requested[0]!.cookie, 'steamLoginSecure=x; Steam_Language=english');
   });
 
